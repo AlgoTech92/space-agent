@@ -8,6 +8,8 @@ Keep agent orchestration, prompt construction, tool flow, state management, user
 
 Documentation is top priority for this area. After any change under `app/` or any app-facing contract change owned here, update this file in the same session before finishing.
 
+The current goal for this tree is no longer just framework completion. The framework under `app/L0/_all/mod/_core/framework/` is now the base platform for the actual frontend app. New first-party app work should be built as `_core` modules that compose through modules and extensions instead of growing page shells or one-off boot scripts.
+
 ## Structure
 
 The browser runtime is organized into three layers:
@@ -18,20 +20,24 @@ The browser runtime is organized into three layers:
 
 Current browser entry surfaces are served from `server/pages/`:
 
-- `/`: main chat shell from `server/pages/index.html`
+- `/`: main app shell from `server/pages/index.html`
 - `/admin`: admin shell from `server/pages/admin.html`
 - `/login`: standalone login screen from `server/pages/login.html`
 - `/logout`: server-side logout action that clears the session cookie and redirects to `/login`
 
 Current shared module locations:
 
-- `app/L0/_all/mod/_core/framework/`: shared frontend framework bootstrap, runtime helpers, API client, modal/component support
-- `app/L0/_all/mod/_core/chat/`: current chat runtime, UI, storage, execution context, and LLM client helpers
-- `app/L0/_all/mod/_core/admin/`: current admin UI modules
+- `app/L0/_all/mod/_core/framework/`: shared frontend bootstrap, extension resolver, component loader, runtime helpers, API client, modal support, icon support, design tokens, and shared visual primitives
+- `app/L0/_all/mod/_core/chat/`: current chat runtime and the best reference implementation of a store-driven app feature mounted through the extension system
+- `app/L0/_all/mod/_core/admin/`: current admin UI and the best reference implementation of a page-specific shell mounted through a page-specific extension anchor
 - `app/L0/test/`: firmware-side test and example customware fixtures
-- frontend JS extension hook files live under each module's `ext/` folder and resolve by module-relative extension-point path, for example `mod/_core/framework/ext/_core/framework/initializer.js/initialize/start/...`
-- page-level HTML extensions follow the same pattern; for example the main `/` shell exposes `html/body/start`, and the core chat runtime attaches there through `/mod/_core/chat/ext/html/body/start/chat-page.html`
-- page-specific shells may expose their own anchors when they should not share a generic page hook; for example the admin shell uses `page/admin/body/start` and the core admin UI attaches there through `/mod/_core/admin/ext/page/admin/body/start/admin-shell.html`
+
+Shared browser primitives:
+
+- `<x-extension id="...">`: HTML extension anchor; loads matching `mod/**/ext/**` HTML files
+- `<x-component path="/mod/...">`: HTML component loader; fetches a component file and mounts its markup, styles, and scripts
+- `<x-icon>`: lightweight icon tag normalized by the framework into a Material Symbols glyph
+- `globalThis.space`: shared frontend runtime namespace
 
 ## Layer Rules And Module Model
 
@@ -44,11 +50,230 @@ Current shared module locations:
 - group definitions live in `group.yaml` files under `app/L0/<group-id>/` and `app/L1/<group-id>/`
 - read permission rules are explicit: users can read their own `L2/<username>/`, and can read `L0/<group>/` and `L1/<group>/` only for groups they belong to
 - write permission rules are explicit: users can write their own `L2/<username>/`; users can write `L1/<group>/` only for groups they manage directly or through managing-group inclusion; `_admin` members can write any `L1/` and `L2/` path; nobody writes `L0/`
-- modules are the supported browser extension unit
+- modules are the supported browser delivery and extension unit
 - each group or user owns a `mod/` folder, and module contents are namespaced as `mod/<author>/<repo>/...`
 - browser-facing code and assets should normally be delivered through `/mod/...`
 - the current inheritance model is `L0 -> L1 -> L2` across the effective group chain for the current user
 - authenticated frontend fetches now rely on the server-issued session cookie after login; do not reintroduce client-trusted identity shortcuts
+- first-party application development should now happen primarily under `app/L0/_all/mod/_core/`
+- use `L1` and `L2` for layered overrides and customware behavior, not as the main home for repo-owned first-party app features
+
+## Frontend Composition Model
+
+The frontend is built as a chain of extensions. The root page shell should do almost nothing except load the framework and expose an anchor. The module mounted there should expose more anchors or wrapped functions. Other modules should extend those seams instead of reaching around them.
+
+Current boot flow:
+
+1. `server/pages/index.html` or `server/pages/admin.html` loads shared framework CSS and `/mod/_core/framework/initFw.js`.
+2. The page shell exposes exactly one top-level HTML anchor in the body: `html/body/start` for `/` and `page/admin/body/start` for `/admin`.
+3. `initFw.js` imports `/mod/_core/framework/extensions.js` first. That module creates `globalThis.space`, publishes it to `window`, installs `space.extend`, and starts the HTML-extension observer.
+4. `initFw.js` runs `initializer.initialize()`. Because `initialize()` and `setDeviceClass()` are wrapped with `space.extend`, they already expose JS extension hooks before the rest of the app is mounted.
+5. `initFw.js` then loads framework support modules such as `modals.js`, `components.js`, `icons.js`, and the confirm-click helper, imports Alpine, and registers framework Alpine directives.
+6. `extensions.js` scans the DOM for `<x-extension>` nodes. For each `id`, it batches one `/api/extensions_load` request per frame for all uncached extension lookups.
+7. Matching HTML extension files are turned into `<x-component>` nodes in resolved order.
+8. `components.js` fetches each component file, mounts its styles and scripts, appends its body nodes, and recursively loads nested `<x-component>` tags.
+9. Alpine activates the mounted markup. Feature stores and runtime helpers own behavior from there.
+
+The current app already demonstrates this chain:
+
+```html
+<!-- server/pages/index.html -->
+<body class="light-mode app-page-chat">
+  <x-extension id="html/body/start"></x-extension>
+</body>
+```
+
+```html
+<!-- app/L0/_all/mod/_core/chat/ext/html/body/start/chat-page.html -->
+<x-component path="/mod/_core/chat/chat-page.html"></x-component>
+```
+
+That pattern is the default for new app work. Keep the shell small, mount a module through an extension file, and let that module expose the next seam.
+
+## Extension System Contracts
+
+There are two primary extension styles in the frontend runtime.
+
+### HTML Extension Anchors
+
+Use HTML extension anchors when the seam is structural or visual.
+
+- A DOM anchor is declared with `<x-extension id="some/path">`
+- Matching HTML files live at `mod/<author>/<repo>/ext/some/path/*.html`
+- The resolved HTML files are mounted in order as `<x-component>` tags
+- HTML extension files should usually stay thin and mount the real component from the module root instead of containing the whole feature directly
+
+Recommended pattern:
+
+```html
+<!-- anchor -->
+<x-extension id="page/admin/body/start"></x-extension>
+```
+
+```html
+<!-- thin adapter file under ext/ -->
+<x-component path="/mod/_core/admin/admin-shell.html"></x-component>
+```
+
+Choose HTML anchors deliberately:
+
+- use a generic anchor such as `html/body/start` only when the contribution is meant to compose into a shared page surface
+- use a page-specific anchor such as `page/admin/body/start` when a surface is owned by one page and should not attract unrelated contributions
+- add a new anchor in the owning module when downstream modules need a stable DOM insertion point
+- do not import and patch another module's private markup when a small `<x-extension>` seam would make the contract explicit
+
+### JS Extension Hooks
+
+Use JS extension hooks when the seam is behavioral.
+
+The standard hook API is `space.extend(import.meta, ...)`.
+
+Example:
+
+```js
+// /mod/_core/framework/initializer.js
+export const initialize = globalThis.space.extend(import.meta, async function initialize() {
+  await setDeviceClass();
+});
+```
+
+That function exposes the extension point `_core/framework/initializer.js/initialize`, which means hook files may live at:
+
+- `mod/<author>/<repo>/ext/_core/framework/initializer.js/initialize/start/*.js`
+- `mod/<author>/<repo>/ext/_core/framework/initializer.js/initialize/end/*.js`
+
+Important rules:
+
+- `space.extend()` requires a valid module ref such as `import.meta`
+- `space.extend()` wraps standalone functions, not classes
+- wrapped functions become async; callers should `await` them
+- if the function name is not the contract you want to expose, pass an explicit relative extension-point name
+- import `/mod/_core/framework/extensions.js` only once from `initFw.js`; other modules should use `globalThis.space.extend(...)` directly
+- do not create local `const extend = globalThis.space.extend` aliases just to forward the same global contract
+
+Hook context behavior:
+
+- `/start` hooks run before the original function
+- `/end` hooks run after the original function or after a skipped call
+- hook modules receive the mutable context object created by `space.extend()`
+- `/start` hooks may rewrite `ctx.args`, set `ctx.skip = true`, or set `ctx.error`
+- `/end` hooks may inspect or replace `ctx.result` and `ctx.error`
+- the hook context includes `args`, `result`, `error`, `skip`, `skipped`, `thisArg`, `extensionPoint`, `functionName`, and `original`
+
+The framework also supports explicit named JS extension points through `callJsExtensions("name", data)`. Use that style when the seam is a named event rather than the lifecycle of one owning function. Current examples are `open_modal_before` and `close_modal_before` in `framework/modals.js`.
+
+## Resolution, Ordering, And Overrides
+
+The server resolves extension files from the current user's accessible `L0`, `L1`, and `L2` module trees through `/api/extensions_load`.
+
+What composes and what overrides:
+
+- if two layers provide the exact same module-relative extension file path, the higher-ranked layer overrides the lower one
+- if two layers provide different filenames under the same extension point, both contributions remain and compose together
+- use the exact same `ext/.../<filename>` path only when replacement is intentional
+- use different filenames when the goal is additive composition
+
+Current resolution order is:
+
+- `L0/_all`
+- current user's ordered `L0/<group>/` chain
+- `L1/_all`
+- current user's ordered `L1/<group>/` chain
+- `L2/<username>`
+
+Within the same effective rank, results are ordered lexically by project path. If multiple same-rank contributions must render in a stable sequence, name the files intentionally.
+
+Practical guidance:
+
+- prefer additive composition first
+- prefer small anchor-specific files over full lower-layer replacement
+- use exact-path overrides for true firmware replacement, not as the first tool for ordinary feature work
+
+## Component Contract
+
+`<x-component>` loads an HTML file and treats it as a component source.
+
+Current loader behavior:
+
+- the component source may be a full HTML document or a simple fragment
+- `<style>` and `<link rel="stylesheet">` nodes are appended to the target element
+- `<script type="module" src="...">` scripts are loaded with dynamic `import()`
+- nested `<x-component>` tags are discovered and loaded recursively
+- dynamically inserted `<x-component>` nodes are handled by a `MutationObserver`
+- attributes on parent `<x-component>` wrappers are available inside descendants through `xAttrs($el)`
+
+Preferred component structure for non-trivial modules:
+
+```html
+<html>
+  <head>
+    <link rel="stylesheet" href="/mod/_core/feature/feature.css" />
+    <script type="module" src="/mod/_core/feature/feature-page.js"></script>
+  </head>
+  <body>
+    <!-- component markup -->
+  </body>
+</html>
+```
+
+Guidelines:
+
+- keep real implementation files in the module root, not under `ext/`
+- use root-based `/mod/...` URLs for component scripts, styles, and assets
+- prefer external module scripts over large inline behavior blocks
+- use fragment components for very small leaf pieces such as nested snippets or modal bodies
+- use full-document component files when the component needs its own `<head>` assets, `<title>`, or body/html classes
+
+## Alpine Store And Runtime Guide
+
+The current frontend pattern is Alpine plus store-backed modules.
+
+Recommended ownership split:
+
+- component HTML owns structure and Alpine bindings
+- Alpine stores own state, persistence, async work, server calls, and orchestration
+- module utilities own rendering helpers, data transforms, and protocol logic that would make a store too dense
+- `space` owns shared runtime APIs and cross-feature namespaces
+
+Store guidance:
+
+- create stores with `createStore(name, model)`
+- use `init()` for one-time store startup
+- use `mount(refs)` and `unmount()` when the store needs DOM references or window listeners
+- pass DOM references from Alpine with `x-ref`; do not make stores scan the whole document when direct refs will do
+- gate store-dependent UI with `x-data` plus `template x-if="$store.<name>"`
+- use `x-init` to mount and `x-destroy` to clean up
+- prefer Alpine handlers such as `@click`, `@submit.prevent`, `@input`, `@keydown`, `x-model`, `x-text`, and `x-show` over manual listener wiring
+
+Runtime guidance:
+
+- initialize shared page runtime with `initializeRuntime(...)` near the top-level feature entry that owns the page behavior
+- publish cross-feature contracts under explicit runtime namespaces such as `space.currentChat`, not as loose globals
+- if a feature expects downstream extensions, expose a small explicit runtime or hook contract in the owner instead of having dependent modules reach into internal closures
+
+## App Development Principles
+
+This is the default development model for the app going forward.
+
+- build every feature as a module under `app/L0/_all/mod/_core/<feature>/`
+- treat the page shell as an extension root, not as the application body
+- treat each mounted module as the owner of the next seam
+- if another feature needs to modify owned behavior, expose a new extension point at the owning boundary instead of importing private internals and patching them indirectly
+- keep extension files thin; put reusable logic, markup, and styling in ordinary module files
+- design every new feature so it can itself be extended later
+- when choosing between a direct import and a new extension seam, prefer a direct import for purely internal implementation detail and a new extension seam for any contract that another module or layer may reasonably need to customize
+- when a style, helper, or runtime contract will be reused by multiple modules, move it into `_core/framework` or another clearly shared owning module instead of cloning it
+- do not grow `server/pages/*.html` beyond shell concerns when the same result can be achieved with modules and extension anchors
+- do not build new first-party app features directly inside transient `L1` or `L2` customware
+
+Use this decision sequence when adding new app functionality:
+
+1. Choose the owning module under `_core`.
+2. Decide where it mounts: existing anchor, new anchor, modal surface, or standalone module page.
+3. Put the real component, store, CSS, and utilities in the owning module root.
+4. Add the smallest possible `ext/...` adapter file to attach that module to the chosen seam.
+5. If the new module needs downstream customization, expose its own `<x-extension>` or `space.extend()` seam immediately instead of waiting for consumers to monkey-patch it later.
+6. If layer-specific behavior is needed, prefer additive extension files first and full same-path overrides only when replacement is the real intent.
 
 ## Frontend Implementation Guide
 
@@ -58,21 +283,12 @@ Current shared module locations:
 - use `app/L0/_all/mod/_core/framework/colors.css` as the shared palette source for authenticated frontend surfaces; prefer its semantic purpose-based tokens over hardcoded page-local colors
 - use `app/L0/_all/mod/_core/framework/visual.css`, loaded through `index.css`, for shared backdrop primitives such as the space canvas and sparse celestial motion instead of rebuilding page backgrounds from scratch
 - use `/mod/_core/framework/initFw.js` as the shared frontend bootstrap for framework-backed pages
-- treat the extension system as the root composition primitive for the frontend runtime: `initFw.js` imports `/mod/_core/framework/extensions.js` first, that module initializes `globalThis.space`, and later framework modules build the runtime tree by exposing and extending module-scoped extension points
-- import `/mod/_core/framework/extensions.js` only once from `initFw.js`; later modules should use `globalThis.space.extend(...)` directly and should not create local `const extend = ...` aliases just to forward the same global
-- use `space.extend(import.meta, fn)` for extensible functions; when a function represents an object-style or class-style branch in the runtime tree, pass an explicit relative extension-point name such as `space.extend(import.meta, "Initializer/setDeviceClass", fn)`
-- prefer Alpine stores created with `createStore(...)` for feature controllers
-- gate store-dependent component content with `x-data` and `template x-if="$store.<name>"`
-- use Alpine handlers such as `@click`, `@submit.prevent`, `@input`, `@keydown`, `x-model`, `x-text`, `x-ref`, `x-init`, and `x-destroy` instead of wiring most behavior through manual `querySelector` listeners
-- pass DOM references into stores from Alpine via `x-ref`; do not make stores scan the whole document when direct refs will do
-- keep stores responsible for state, persistence, async flows, and orchestration; move large render-only helpers into separate modules when templating alone becomes too dense
-- expose shared browser-facing APIs through the `space` runtime namespace
-- keep feature-specific runtime state in the owning feature namespace or store, such as `space.currentChat`, not in generic runtime globals
-- keep new runtime features in module folders, not in ad hoc top-level static paths
-- legacy extension helpers still exist under the framework area; do not expand them casually if the module-based `/mod/...` model already covers the use case
 - wrapped functions expose their resolved extension point at `fn.extensionPoint`; use that in the browser console when debugging where matching extension files belong
 - cache empty extension lookups as valid results; a missing extension point should not trigger repeated `/api/extensions_load` polling during the same cache lifetime
 - uncached extension lookups are batched to one `/api/extensions_load` request per frame; keep extension discovery bursty and declarative so the batcher can collapse multiple JS and HTML hook lookups together during bootstrap and DOM scans
+- browser-side file changes still require a manual browser refresh; live reload is not wired into the app runtime yet
+- because extension lookups are cached in memory, adding new `ext/...` files often requires a reload before the running page will discover them
+- when you add a new stable app seam, update this file in the same session so later agents know where the extension boundary now lives
 
 ## Visual Guidance
 
@@ -92,12 +308,17 @@ Space Agent frontend work should look like one deliberate system rather than a m
 ## Current State
 
 - `server/pages/index.html` and `server/pages/admin.html` are plain module-backed shells; the server router decides whether to serve them or redirect to `/login`
-- `server/pages/index.html` now exposes the `html/body/start` extension anchor and the core chat shell is injected there from `/mod/_core/chat/ext/html/body/start/chat-page.html` rather than being hardcoded directly in the page shell
-- `server/pages/admin.html` now exposes the `page/admin/body/start` extension anchor and the core admin shell is injected there from `/mod/_core/admin/ext/page/admin/body/start/admin-shell.html`
-- `server/pages/login.html` contains the login submit flow inline, can create a temporary guest account through `/api/guest_create`, reuses the primary username and password fields to present guest credentials before continuing, exchanges credentials for a server session before redirecting to `/`, and is the current reference implementation of the minimal dark space visual draft, including the two-column intro with the continuously drifting astronaut mascot plus a CSS-only diagonal parallax stack with one-way repeating drift where the distant star fields stay simple and only the near two star layers carry halo treatments
+- `server/pages/index.html` exposes the `html/body/start` extension anchor and the core chat shell is injected there from `/mod/_core/chat/ext/html/body/start/chat-page.html` rather than being hardcoded directly in the page shell
+- `server/pages/admin.html` exposes the `page/admin/body/start` extension anchor and the core admin shell is injected there from `/mod/_core/admin/ext/page/admin/body/start/admin-shell.html`
+- `app/L0/_all/mod/_core/framework/` is the platform layer for new frontend app work
+- `app/L0/_all/mod/_core/framework/visual.css` owns the shared space canvas backdrop primitives used across frontend surfaces
+- `app/L0/_all/mod/_core/framework/modals.js` exposes modal shell anchors at `modal-shell-start` and `modal-shell-end`
+- `app/L0/_all/mod/_core/chat/` is the current reference module for a full page feature mounted through a root HTML extension and driven by an Alpine store plus shared runtime helpers
+- `app/L0/_all/mod/_core/admin/` is the current reference module for a page-specific shell, nested components, and modal-compatible component content
+- `app/L0/_all/mod/_core/framework/initializer.js` plus its `ext/_core/framework/initializer.js/...` files are the current reference example for JS start/end extension hooks
+- `server/pages/login.html` contains the login submit flow inline, can create a temporary guest account through `/api/guest_create`, reuses the primary username and password fields to present guest credentials before continuing, exchanges credentials for a server session before redirecting to `/`, omits the old in-panel `Sign in` heading, visually prioritizes the guest-account action over direct sign-in, and exposes a secondary public `Run it yourself` GitHub link under the guest-account path, and is the current reference implementation of the minimal dark space visual draft, including the two-column intro where the `Space Agent` title and astronaut mascot float independently with randomized motion driven by explicit text tuning params for movement distance/speed and rotation distance/speed while the astronaut derives those values at `1.5x` and the motto line stays anchored, plus a static gradient/glow backdrop and drifting CSS star layers where the distant star fields stay simple, only the near two star layers carry halo treatments, the shooting stars randomize their launch paths instead of replaying a fixed sequence, and the login buttons keep hover feedback visual-only so their hitboxes stay fixed
 - `/login` is public and should not depend on authenticated `/mod/...` assets; when it needs theme tokens or the shared space backdrop before login, mirror the shared semantic palette and backdrop recipe locally instead of inventing a separate visual system
 - `/logout` is handled entirely by the server pages layer; there is no standalone logout page shell in `app/` or `server/pages/`
-- browser-side file changes still require a manual browser refresh; live reload is not wired into the app runtime yet
-- `app/L0/_all/mod/_core/framework/visual.css` now owns the shared space canvas backdrop primitives used across frontend surfaces
 - the current frontend runtime tree starts at `/mod/_core/framework/initFw.js`, installs `space.extend` from `/mod/_core/framework/extensions.js`, runs extensible framework bootstrap functions such as `/mod/_core/framework/initializer.js`, and then continues composing further runtime behavior by module and extension point
+- the next phase of frontend development should add new `_core` modules and new extension seams instead of growing page shells or concentrating more logic in `_core/chat`
 - when app structure, layer behavior, module layout, entry shells, or frontend conventions change, update this file in the same session

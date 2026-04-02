@@ -60,27 +60,6 @@
 
       /* Mirrors /mod/_core/framework/visual.css for the public login shell. */
       body.space-theme-canvas {
-        --space-shooting-one-top: 16%;
-        --space-shooting-one-left: 10%;
-        --space-shooting-one-angle: 18.4deg;
-        --space-shooting-one-mid-x: clamp(9rem, 36vmin, 30rem);
-        --space-shooting-one-mid-y: clamp(3rem, 12vmin, 10rem);
-        --space-shooting-one-end-x: clamp(16.5rem, 66vmin, 54rem);
-        --space-shooting-one-end-y: clamp(5.5rem, 22vmin, 18rem);
-        --space-shooting-two-top: 19%;
-        --space-shooting-two-left: 82%;
-        --space-shooting-two-angle: 139deg;
-        --space-shooting-two-mid-x: clamp(-24rem, -30vmin, -8rem);
-        --space-shooting-two-mid-y: clamp(6rem, 26vmin, 20rem);
-        --space-shooting-two-end-x: clamp(-42rem, -56vmin, -14rem);
-        --space-shooting-two-end-y: clamp(11rem, 48vmin, 36rem);
-        --space-shooting-three-top: 63%;
-        --space-shooting-three-left: 17%;
-        --space-shooting-three-angle: -21.3deg;
-        --space-shooting-three-mid-x: clamp(9rem, 36vmin, 30rem);
-        --space-shooting-three-mid-y: clamp(-10rem, -14vmin, -3.5rem);
-        --space-shooting-three-end-x: clamp(17rem, 68vmin, 56rem);
-        --space-shooting-three-end-y: clamp(-18rem, -26vmin, -6.5rem);
         margin: 0;
         min-height: 100vh;
         display: grid;
@@ -99,6 +78,7 @@
       }
 
       .space-parallax {
+        --space-star-speed-multiplier: 2;
         position: fixed;
         inset: 0;
         overflow: hidden;
@@ -121,11 +101,18 @@
         --space-scale: 1;
         background-repeat: repeat;
         background-position: 0 0;
-        transform: rotate(var(--space-rotate)) scale(var(--space-scale));
+        transform: translate3d(0, 0, 0) rotate(var(--space-rotate)) scale(var(--space-scale));
         transform-origin: center;
-        contain: paint;
-        will-change: background-position;
-        animation: space-theme-diagonal-drift var(--space-duration) linear infinite;
+      }
+
+      .space-star-layer {
+        backface-visibility: hidden;
+        will-change: transform;
+        animation:
+          space-theme-diagonal-drift
+          calc(var(--space-duration) / var(--space-star-speed-multiplier))
+          linear
+          infinite;
       }
 
       .space-glow-layer {
@@ -142,10 +129,10 @@
       }
 
       .space-star-layer-deep {
-        --space-drift-x: 208px;
-        --space-drift-y: 208px;
+        --space-drift-x: 216.3px;
+        --space-drift-y: 216.3px;
         --space-duration: 260s;
-        --space-rotate: 6deg;
+        --space-rotate: 0deg;
         --space-scale: 1.04;
         opacity: 0.36;
         background-image:
@@ -160,10 +147,10 @@
       }
 
       .space-star-layer-far {
-        --space-drift-x: 226px;
-        --space-drift-y: 226px;
+        --space-drift-x: 244.1px;
+        --space-drift-y: 244.1px;
         --space-duration: 170s;
-        --space-rotate: -7deg;
+        --space-rotate: 0deg;
         --space-scale: 1.08;
         opacity: 0.56;
         background-image:
@@ -179,10 +166,10 @@
       }
 
       .space-star-layer-mid {
-        --space-drift-x: 238px;
-        --space-drift-y: 238px;
+        --space-drift-x: 264.2px;
+        --space-drift-y: 264.2px;
         --space-duration: 118s;
-        --space-rotate: 3deg;
+        --space-rotate: 0deg;
         --space-scale: 1.11;
         opacity: 0.62;
         background-image:
@@ -198,10 +185,10 @@
       }
 
       .space-star-layer-near {
-        --space-drift-x: 262px;
-        --space-drift-y: 262px;
+        --space-drift-x: 298.7px;
+        --space-drift-y: 298.7px;
         --space-duration: 82s;
-        --space-rotate: 8deg;
+        --space-rotate: 0deg;
         --space-scale: 1.14;
         opacity: 0.76;
         background-image:
@@ -216,10 +203,10 @@
       }
 
       .space-star-layer-close {
-        --space-drift-x: 304px;
-        --space-drift-y: 304px;
+        --space-drift-x: 358.7px;
+        --space-drift-y: 358.7px;
         --space-duration: 62s;
-        --space-rotate: -11deg;
+        --space-rotate: 0deg;
         --space-scale: 1.18;
         opacity: 0.86;
         background-image:
@@ -236,14 +223,19 @@
 
       .space-shooting-stars {
         inset: 0;
+        overflow: hidden;
       }
 
-      .space-shooting-stars::before {
-        content: "";
+      .space-shooting-star {
+        --space-shooting-angle: 24deg;
+        --space-shooting-distance-x: 36vmax;
+        --space-shooting-distance-y: 14vmax;
+        --space-shooting-duration: 1200ms;
+        --space-shooting-length: 10rem;
         position: absolute;
-        top: var(--space-shooting-one-top);
-        left: var(--space-shooting-one-left);
-        width: 10rem;
+        top: 20%;
+        left: 20%;
+        width: var(--space-shooting-length);
         height: 2px;
         border-radius: 999px;
         background: linear-gradient(
@@ -259,127 +251,66 @@
           drop-shadow(0 0 18px rgba(148, 188, 255, 0.22));
         opacity: 0;
         will-change: transform, opacity;
-        animation: space-theme-shooting-star 6s linear infinite;
+      }
+
+      .space-shooting-star.is-active {
+        animation: space-theme-shooting-star-flight var(--space-shooting-duration) linear forwards;
       }
 
       @keyframes space-theme-diagonal-drift {
         from {
-          background-position: 0 0;
+          transform: translate3d(0, 0, 0) rotate(var(--space-rotate)) scale(var(--space-scale));
         }
 
         to {
-          background-position: var(--space-drift-x) var(--space-drift-y);
+          transform:
+            translate3d(var(--space-drift-x), var(--space-drift-y), 0)
+            rotate(var(--space-rotate))
+            scale(var(--space-scale));
         }
       }
 
-      @keyframes space-theme-shooting-star {
+      @keyframes space-theme-shooting-star-flight {
         0%,
-        13% {
-          top: var(--space-shooting-one-top);
-          left: var(--space-shooting-one-left);
+        11% {
           opacity: 0;
-          transform: translate3d(0, 0, 0) rotate(var(--space-shooting-one-angle)) scaleX(0.16);
+          transform: translate3d(0, 0, 0) rotate(var(--space-shooting-angle)) scaleX(0.16);
         }
 
-        14% {
+        18% {
           opacity: 0;
-          transform: translate3d(0, 0, 0) rotate(var(--space-shooting-one-angle)) scaleX(0.22);
-        }
-
-        15.2% {
-          opacity: 0.95;
-          transform:
-            translate3d(var(--space-shooting-one-mid-x), var(--space-shooting-one-mid-y), 0)
-            rotate(var(--space-shooting-one-angle))
-            scaleX(1);
-        }
-
-        16.2% {
-          opacity: 0;
-          transform:
-            translate3d(var(--space-shooting-one-end-x), var(--space-shooting-one-end-y), 0)
-            rotate(var(--space-shooting-one-angle))
-            scaleX(0.44);
-        }
-
-        16.3%,
-        41% {
-          top: var(--space-shooting-one-top);
-          left: var(--space-shooting-one-left);
-          opacity: 0;
-          transform: translate3d(0, 0, 0) rotate(var(--space-shooting-one-angle)) scaleX(0.16);
+          transform: translate3d(0, 0, 0) rotate(var(--space-shooting-angle)) scaleX(0.24);
         }
 
         42% {
-          top: var(--space-shooting-two-top);
-          left: var(--space-shooting-two-left);
-          opacity: 0;
-          transform: translate3d(0, 0, 0) rotate(var(--space-shooting-two-angle)) scaleX(0.18);
-        }
-
-        43.2% {
-          opacity: 0.92;
+          opacity: 0.95;
           transform:
-            translate3d(var(--space-shooting-two-mid-x), var(--space-shooting-two-mid-y), 0)
-            rotate(var(--space-shooting-two-angle))
-            scaleX(0.98);
+            translate3d(
+              calc(var(--space-shooting-distance-x) * 0.58),
+              calc(var(--space-shooting-distance-y) * 0.58),
+              0
+            )
+            rotate(var(--space-shooting-angle))
+            scaleX(1);
         }
 
-        44.1% {
-          opacity: 0;
-          transform:
-            translate3d(var(--space-shooting-two-end-x), var(--space-shooting-two-end-y), 0)
-            rotate(var(--space-shooting-two-angle))
-            scaleX(0.42);
-        }
-
-        44.2%,
-        71% {
-          top: var(--space-shooting-two-top);
-          left: var(--space-shooting-two-left);
-          opacity: 0;
-          transform: translate3d(0, 0, 0) rotate(var(--space-shooting-two-angle)) scaleX(0.18);
-        }
-
-        72% {
-          top: var(--space-shooting-three-top);
-          left: var(--space-shooting-three-left);
-          opacity: 0;
-          transform: translate3d(0, 0, 0) rotate(var(--space-shooting-three-angle)) scaleX(0.18);
-        }
-
-        73.1% {
-          opacity: 0.9;
-          transform:
-            translate3d(var(--space-shooting-three-mid-x), var(--space-shooting-three-mid-y), 0)
-            rotate(var(--space-shooting-three-angle))
-            scaleX(1.04);
-        }
-
-        74% {
-          opacity: 0;
-          transform:
-            translate3d(var(--space-shooting-three-end-x), var(--space-shooting-three-end-y), 0)
-            rotate(var(--space-shooting-three-angle))
-            scaleX(0.46);
-        }
-
-        74.1%,
         100% {
-          top: var(--space-shooting-three-top);
-          left: var(--space-shooting-three-left);
           opacity: 0;
-          transform: translate3d(0, 0, 0) rotate(var(--space-shooting-three-angle)) scaleX(0.18);
+          transform:
+            translate3d(var(--space-shooting-distance-x), var(--space-shooting-distance-y), 0)
+            rotate(var(--space-shooting-angle))
+            scaleX(0.38);
         }
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .space-parallax-layer {
+        .space-star-layer {
           animation: none;
-          transform: rotate(var(--space-rotate)) scale(var(--space-scale));
+          transform: translate3d(0, 0, 0) rotate(var(--space-rotate)) scale(var(--space-scale));
         }
 
-        .space-shooting-stars::before {
+        .space-shooting-star,
+        .space-shooting-star.is-active {
           animation: none;
           opacity: 0;
         }
@@ -399,16 +330,32 @@
       .intro {
         position: relative;
         display: grid;
-        grid-template-columns: minmax(0, 15.5rem) minmax(6.8rem, 9.8rem);
-        gap: clamp(0.7rem, 2.2vw, 1.5rem);
-        align-items: center;
+        gap: 0.9rem;
         padding-block: clamp(0.5rem, 2vw, 1.5rem);
       }
 
-      .intro-content {
+      .intro-floating-cluster {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(0, 15.5rem) minmax(6.8rem, 9.8rem);
+        gap: clamp(0.3rem, 1.5vw, 0.95rem);
+        align-items: center;
+        width: fit-content;
+        max-width: 100%;
+      }
+
+      .intro-title {
+        --intro-title-float-x: 0px;
+        --intro-title-float-y: 0px;
+        --intro-title-rotate: 0deg;
         position: relative;
         z-index: 1;
         min-width: 0;
+        transform:
+          translate3d(var(--intro-title-float-x), var(--intro-title-float-y), 0)
+          rotate(var(--intro-title-rotate));
+        transform-origin: 52% 52%;
+        will-change: transform;
       }
 
       .intro-art {
@@ -439,7 +386,7 @@
       }
 
       h1 {
-        margin: 0 0 0.85rem;
+        margin: 0;
         max-width: 7ch;
         font-size: clamp(2.7rem, 7vw, 4.6rem);
         line-height: 0.96;
@@ -493,7 +440,7 @@
       form {
         display: grid;
         gap: var(--space-3);
-        margin-top: 1.1rem;
+        margin-top: 0;
       }
 
       input {
@@ -548,15 +495,10 @@
         font-weight: 700;
         cursor: pointer;
         transition:
-          transform 160ms ease,
           box-shadow 160ms ease,
           background-color 160ms ease,
           border-color 160ms ease,
           opacity 160ms ease;
-      }
-
-      button:hover:not(:disabled) {
-        transform: translateY(-1px);
       }
 
       button:focus-visible {
@@ -565,6 +507,7 @@
       }
 
       .primary-button {
+        width: 100%;
         color: var(--color-accent-ink);
         background: linear-gradient(
           135deg,
@@ -581,7 +524,6 @@
       button:disabled {
         opacity: 0.68;
         cursor: not-allowed;
-        transform: none;
       }
 
       .secondary-button {
@@ -595,6 +537,36 @@
       .secondary-button:hover:not(:disabled) {
         background: rgba(255, 255, 255, 0.05);
         border-color: var(--color-border-strong);
+      }
+
+      .secondary-link {
+        display: grid;
+        place-items: center;
+        width: 100%;
+        min-height: calc(0.88rem * 2 + 1rem);
+        padding: 0.88rem 1rem;
+        border-radius: var(--radius-control);
+        color: var(--color-text-primary);
+        text-decoration: none;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(148, 167, 201, 0.12);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+        transition:
+          box-shadow 160ms ease,
+          background-color 160ms ease,
+          border-color 160ms ease,
+          color 160ms ease,
+          opacity 160ms ease;
+      }
+
+      .secondary-link:hover {
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(168, 186, 219, 0.24);
+      }
+
+      .secondary-link:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 4px rgba(125, 220, 255, 0.12);
       }
 
       .login-separator {
@@ -654,16 +626,13 @@
         }
 
         .intro {
-          width: fit-content;
           max-width: 100%;
-          grid-template-columns: minmax(0, 12.6rem) clamp(8.1rem, 36vw, 10.2rem);
-          gap: 0.2rem;
-          justify-content: start;
           padding-block: 0;
         }
 
-        .intro-content {
-          max-width: 12.6rem;
+        .intro-floating-cluster {
+          grid-template-columns: minmax(0, 12.6rem) clamp(8.1rem, 36vw, 10.2rem);
+          gap: 0;
         }
 
         .intro-art {
@@ -688,12 +657,9 @@
       }
 
       @media (max-width: 520px) {
-        .intro {
+        .intro-floating-cluster {
           grid-template-columns: minmax(0, 10.8rem) clamp(7.35rem, 36vw, 8.85rem);
-        }
-
-        .intro-content {
-          max-width: 10.8rem;
+          gap: 0;
         }
 
         .intro-art {
@@ -728,35 +694,39 @@
   <body class="space-theme-canvas">
     <div class="space-parallax" aria-hidden="true">
       <div class="space-parallax-layer space-glow-layer"></div>
-      <div class="space-parallax-layer space-star-layer-deep"></div>
-      <div class="space-parallax-layer space-star-layer-far"></div>
-      <div class="space-parallax-layer space-star-layer-mid"></div>
-      <div class="space-parallax-layer space-star-layer-near"></div>
-      <div class="space-parallax-layer space-star-layer-close"></div>
-      <div class="space-shooting-stars"></div>
+      <div class="space-parallax-layer space-star-layer space-star-layer-deep"></div>
+      <div class="space-parallax-layer space-star-layer space-star-layer-far"></div>
+      <div class="space-parallax-layer space-star-layer space-star-layer-mid"></div>
+      <div class="space-parallax-layer space-star-layer space-star-layer-near"></div>
+      <div class="space-parallax-layer space-star-layer space-star-layer-close"></div>
+      <div class="space-shooting-stars">
+        <div class="space-shooting-star" data-shooting-star></div>
+        <div class="space-shooting-star" data-shooting-star></div>
+      </div>
     </div>
     <main class="shell">
       <section class="intro" aria-label="Space Agent overview">
-        <div class="intro-content">
-          <h1>Space Agent</h1>
-          <p class="intro-copy">
-            AI agent that builds your space,<br />
-            right in the browser.
-          </p>
+        <div id="intro-floating-cluster" class="intro-floating-cluster">
+          <div id="intro-title" class="intro-title">
+            <h1>Space Agent</h1>
+          </div>
+          <div class="intro-art" aria-hidden="true">
+            <img
+              id="intro-astronaut"
+              class="intro-astronaut"
+              src="/pages/res/astronaut_no_bg.webp"
+              alt=""
+              decoding="async"
+            />
+          </div>
         </div>
-        <div class="intro-art" aria-hidden="true">
-          <img
-            id="intro-astronaut"
-            class="intro-astronaut"
-            src="/pages/res/astronaut_no_bg.webp"
-            alt=""
-            decoding="async"
-          />
-        </div>
+        <p class="intro-copy">
+          AI agent that builds your space,<br />
+          right in the browser.
+        </p>
       </section>
 
       <section class="login-panel" aria-label="Login form">
-        <h2>Sign in</h2>
         <form id="login-form">
           <label>
             <span>Username</span>
@@ -775,12 +745,21 @@
           <p id="field-note" class="field-note" hidden>
             Guest account ready, save your credentials!
           </p>
-          <button id="submit-button" class="primary-button" type="submit">Enter your Space</button>
+          <button id="submit-button" class="secondary-button" type="submit">Enter your Space</button>
         </form>
         <div id="login-separator" class="login-separator">or</div>
-        <button id="guest-create-button" class="secondary-button" type="button">
+        <button id="guest-create-button" class="primary-button" type="button">
           Create Temporary Guest Account
         </button>
+        <div class="login-separator">or</div>
+        <a
+          class="secondary-link"
+          href="https://github.com/agent0ai/agent-zero"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Run it yourself
+        </a>
         <div id="status" class="status" role="status" aria-live="polite"></div>
       </section>
     </main>
@@ -788,38 +767,73 @@
       const LOGIN_PREFIX = "space-login-v1";
       const CLIENT_KEY_LABEL = "Client Key";
       const SERVER_KEY_LABEL = "Server Key";
-      const ASTRONAUT_FLOAT_PROFILE = Object.freeze({
+      const INTRO_FLOAT_BASE_PROFILE = Object.freeze({
         blend: Object.freeze({
-          positionMs: 1280,
-          rotationMs: 5200
+          positionMs: 1480,
+          rotationMs: 5600
         }),
         drift: Object.freeze({
           rotate: Object.freeze({
-            primaryAmplitude: 3.8,
-            primaryPeriodMs: 7600,
-            secondaryAmplitude: 1.9,
-            secondaryPeriodMs: 4100
+            primaryAmplitude: 2.4,
+            primaryPeriodMs: 8200,
+            secondaryAmplitude: 1.1,
+            secondaryPeriodMs: 4600
           }),
           x: Object.freeze({
-            primaryAmplitude: 7.5,
-            primaryPeriodMs: 4200,
-            secondaryAmplitude: 3.4,
-            secondaryPeriodMs: 2150
+            primaryAmplitude: 4.8,
+            primaryPeriodMs: 5200,
+            secondaryAmplitude: 2.1,
+            secondaryPeriodMs: 2860
           }),
           y: Object.freeze({
-            primaryAmplitude: 8.6,
-            primaryPeriodMs: 5000,
-            secondaryAmplitude: 3.6,
-            secondaryPeriodMs: 2720
+            primaryAmplitude: 5.4,
+            primaryPeriodMs: 6100,
+            secondaryAmplitude: 2,
+            secondaryPeriodMs: 3300
           })
         }),
         wander: Object.freeze({
-          intervalMaxMs: 5200,
-          intervalMinMs: 2600,
-          rotateRange: 8,
-          xRange: 16,
-          yRange: 13
+          positionIntervalMaxMs: 5600,
+          positionIntervalMinMs: 3000,
+          rotationIntervalMaxMs: 5600,
+          rotationIntervalMinMs: 3000,
+          rotateRange: 5,
+          xRange: 10,
+          yRange: 8
         })
+      });
+      // Tune the title directly here; the astronaut derives from the same knobs at 1.5x.
+      const TITLE_FLOAT_PARAMS = Object.freeze({
+        movementDistance: 1,
+        movementSpeed: 1,
+        rotationDistance: 1,
+        rotationSpeed: 1
+      });
+      const ASTRONAUT_FLOAT_PARAMS = Object.freeze(scaleFloatParams(TITLE_FLOAT_PARAMS, 1.5));
+      const TITLE_FLOAT_PROFILE = buildFloatProfile(INTRO_FLOAT_BASE_PROFILE, TITLE_FLOAT_PARAMS);
+      const ASTRONAUT_FLOAT_PROFILE = buildFloatProfile(
+        INTRO_FLOAT_BASE_PROFILE,
+        ASTRONAUT_FLOAT_PARAMS
+      );
+      const SHOOTING_STAR_PROFILE = Object.freeze({
+        delayMaxMs: 6200,
+        delayMinMs: 1800,
+        durationMaxMs: 1480,
+        durationMinMs: 960,
+        initialDelayMaxMs: 2200,
+        initialDelayMinMs: 280,
+        lengthMaxRem: 12.6,
+        lengthMinRem: 8.4,
+        travelMaxVmax: 72,
+        travelMinVmax: 38,
+        directionPools: Object.freeze([
+          Object.freeze({ angleMaxDeg: 34, angleMinDeg: 16, leftMax: 48, leftMin: 6, topMax: 44, topMin: 4 }),
+          Object.freeze({ angleMaxDeg: 58, angleMinDeg: 38, leftMax: 34, leftMin: 4, topMax: 26, topMin: 2 }),
+          Object.freeze({ angleMaxDeg: 166, angleMinDeg: 144, leftMax: 94, leftMin: 52, topMax: 50, topMin: 6 }),
+          Object.freeze({ angleMaxDeg: 122, angleMinDeg: 102, leftMax: 96, leftMin: 66, topMax: 28, topMin: 2 }),
+          Object.freeze({ angleMaxDeg: -14, angleMinDeg: -34, leftMax: 52, leftMin: 8, topMax: 92, topMin: 42 }),
+          Object.freeze({ angleMaxDeg: 214, angleMinDeg: 194, leftMax: 92, leftMin: 50, topMax: 90, topMin: 46 })
+        ])
       });
       const textEncoder = new TextEncoder();
       const form = document.getElementById("login-form");
@@ -829,20 +843,16 @@
       const loginSeparator = document.getElementById("login-separator");
       const submitButton = document.getElementById("submit-button");
       const guestCreateButton = document.getElementById("guest-create-button");
+      const introTitle = document.getElementById("intro-title");
       const introAstronaut = document.getElementById("intro-astronaut");
+      const shootingStarEls = Array.from(document.querySelectorAll("[data-shooting-star]"));
       const statusEl = document.getElementById("status");
       const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const shootingStarTimers = new WeakMap();
       let guestCredentials = null;
-      let astronautFloatFrame = 0;
-      let astronautFloatLastTime = 0;
-      let astronautFloatStartTime = 0;
-      let astronautNextTargetAt = 0;
-      let astronautCurrentX = 0;
-      let astronautCurrentY = 0;
-      let astronautCurrentRotation = 0;
-      let astronautTargetX = 0;
-      let astronautTargetY = 0;
-      let astronautTargetRotation = 0;
+      let introFloatFrame = 0;
+      let introFloatStartTime = 0;
+      let introFloatLastTime = 0;
 
       function setStatus(message, tone = "") {
         statusEl.textContent = message;
@@ -852,6 +862,16 @@
       function syncButtonState(isBusy = false) {
         submitButton.disabled = isBusy;
         guestCreateButton.disabled = isBusy;
+      }
+
+      function setIntroTitlePose(x, y, rotation) {
+        if (!introTitle) {
+          return;
+        }
+
+        introTitle.style.setProperty("--intro-title-float-x", `${x.toFixed(1)}px`);
+        introTitle.style.setProperty("--intro-title-float-y", `${y.toFixed(1)}px`);
+        introTitle.style.setProperty("--intro-title-rotate", `${rotation.toFixed(1)}deg`);
       }
 
       function setAstronautPose(x, y, rotation) {
@@ -864,16 +884,166 @@
         introAstronaut.style.setProperty("--astronaut-rotate", `${rotation.toFixed(1)}deg`);
       }
 
-      function chooseAstronautTarget(timestamp) {
-        const { wander } = ASTRONAUT_FLOAT_PROFILE;
-
-        astronautTargetX = Math.random() * wander.xRange * 2 - wander.xRange;
-        astronautTargetY = Math.random() * wander.yRange * 2 - wander.yRange;
-        astronautTargetRotation = Math.random() * wander.rotateRange * 2 - wander.rotateRange;
-        astronautNextTargetAt = timestamp + wander.intervalMinMs + Math.random() * (wander.intervalMaxMs - wander.intervalMinMs);
+      function scaleFloatParams(params, multiplier) {
+        return {
+          movementDistance: params.movementDistance * multiplier,
+          movementSpeed: params.movementSpeed * multiplier,
+          rotationDistance: params.rotationDistance * multiplier,
+          rotationSpeed: params.rotationSpeed * multiplier
+        };
       }
 
-      function getAstronautDrift(elapsed, axisProfile, secondaryOffset = 0) {
+      function scaleDuration(durationMs, speedMultiplier) {
+        return durationMs / Math.max(speedMultiplier, 0.01);
+      }
+
+      function scaleFloatAxis(axisProfile, distanceMultiplier, speedMultiplier) {
+        return Object.freeze({
+          primaryAmplitude: axisProfile.primaryAmplitude * distanceMultiplier,
+          primaryPeriodMs: scaleDuration(axisProfile.primaryPeriodMs, speedMultiplier),
+          secondaryAmplitude: axisProfile.secondaryAmplitude * distanceMultiplier,
+          secondaryPeriodMs: scaleDuration(axisProfile.secondaryPeriodMs, speedMultiplier)
+        });
+      }
+
+      function buildFloatProfile(baseProfile, params) {
+        return Object.freeze({
+          blend: Object.freeze({
+            positionMs: scaleDuration(baseProfile.blend.positionMs, params.movementSpeed),
+            rotationMs: scaleDuration(baseProfile.blend.rotationMs, params.rotationSpeed)
+          }),
+          drift: Object.freeze({
+            rotate: scaleFloatAxis(
+              baseProfile.drift.rotate,
+              params.rotationDistance,
+              params.rotationSpeed
+            ),
+            x: scaleFloatAxis(
+              baseProfile.drift.x,
+              params.movementDistance,
+              params.movementSpeed
+            ),
+            y: scaleFloatAxis(
+              baseProfile.drift.y,
+              params.movementDistance,
+              params.movementSpeed
+            )
+          }),
+          wander: Object.freeze({
+            positionIntervalMaxMs: scaleDuration(
+              baseProfile.wander.positionIntervalMaxMs,
+              params.movementSpeed
+            ),
+            positionIntervalMinMs: scaleDuration(
+              baseProfile.wander.positionIntervalMinMs,
+              params.movementSpeed
+            ),
+            rotationIntervalMaxMs: scaleDuration(
+              baseProfile.wander.rotationIntervalMaxMs,
+              params.rotationSpeed
+            ),
+            rotationIntervalMinMs: scaleDuration(
+              baseProfile.wander.rotationIntervalMinMs,
+              params.rotationSpeed
+            ),
+            rotateRange: baseProfile.wander.rotateRange * params.rotationDistance,
+            xRange: baseProfile.wander.xRange * params.movementDistance,
+            yRange: baseProfile.wander.yRange * params.movementDistance
+          })
+        });
+      }
+
+      class FloatingMotionTarget {
+        constructor(element, applyPose, profile, offsets = {}) {
+          this.element = element;
+          this.applyPose = applyPose;
+          this.profile = profile;
+          this.offsets = Object.freeze({
+            rotate: offsets.rotate || 0,
+            x: offsets.x || 0,
+            y: offsets.y || 0,
+            time: offsets.time || 0
+          });
+          this.reset();
+        }
+
+        reset() {
+          this.nextPositionTargetAt = 0;
+          this.nextRotationTargetAt = 0;
+          this.currentX = 0;
+          this.currentY = 0;
+          this.currentRotation = 0;
+          this.targetX = 0;
+          this.targetY = 0;
+          this.targetRotation = 0;
+          this.applyPose(0, 0, 0);
+        }
+
+        choosePositionTarget(timestamp) {
+          const { wander } = this.profile;
+
+          this.targetX = randomBetween(-wander.xRange, wander.xRange);
+          this.targetY = randomBetween(-wander.yRange, wander.yRange);
+          this.nextPositionTargetAt =
+            timestamp +
+            wander.positionIntervalMinMs +
+            Math.random() * (wander.positionIntervalMaxMs - wander.positionIntervalMinMs);
+        }
+
+        chooseRotationTarget(timestamp) {
+          const { wander } = this.profile;
+
+          this.targetRotation = randomBetween(-wander.rotateRange, wander.rotateRange);
+          this.nextRotationTargetAt =
+            timestamp +
+            wander.rotationIntervalMinMs +
+            Math.random() * (wander.rotationIntervalMaxMs - wander.rotationIntervalMinMs);
+        }
+
+        step(timestamp, delta, elapsed) {
+          if (!this.element) {
+            return;
+          }
+
+          if (!this.nextPositionTargetAt || timestamp >= this.nextPositionTargetAt) {
+            this.choosePositionTarget(timestamp);
+          }
+
+          if (!this.nextRotationTargetAt || timestamp >= this.nextRotationTargetAt) {
+            this.chooseRotationTarget(timestamp);
+          }
+
+          const positionBlend = 1 - Math.exp(-delta / this.profile.blend.positionMs);
+          const rotationBlend = 1 - Math.exp(-delta / this.profile.blend.rotationMs);
+          const driftX = getFloatDrift(
+            elapsed + this.offsets.time,
+            this.profile.drift.x,
+            this.offsets.x
+          );
+          const driftY = getFloatDrift(
+            elapsed + 420 + this.offsets.time,
+            this.profile.drift.y,
+            this.offsets.y
+          );
+          const driftRotation = getFloatDrift(
+            elapsed + 930 + this.offsets.time,
+            this.profile.drift.rotate,
+            this.offsets.rotate
+          );
+
+          this.currentX += (this.targetX - this.currentX) * positionBlend;
+          this.currentY += (this.targetY - this.currentY) * positionBlend;
+          this.currentRotation += (this.targetRotation - this.currentRotation) * rotationBlend;
+
+          this.applyPose(
+            this.currentX + driftX,
+            this.currentY + driftY,
+            this.currentRotation + driftRotation
+          );
+        }
+      }
+
+      function getFloatDrift(elapsed, axisProfile, secondaryOffset = 0) {
         const primaryWave = Math.sin(elapsed / axisProfile.primaryPeriodMs) * axisProfile.primaryAmplitude;
         const secondaryWave =
           Math.cos(elapsed / axisProfile.secondaryPeriodMs + secondaryOffset) * axisProfile.secondaryAmplitude;
@@ -881,82 +1051,180 @@
         return primaryWave + secondaryWave;
       }
 
-      function stepAstronautFloat(timestamp) {
-        if (!introAstronaut) {
-          astronautFloatFrame = 0;
+      function randomBetween(min, max) {
+        return min + Math.random() * (max - min);
+      }
+
+      function chooseRandom(list) {
+        return list[Math.floor(Math.random() * list.length)] || null;
+      }
+
+      const introFloatTargets = [
+        new FloatingMotionTarget(introTitle, setIntroTitlePose, TITLE_FLOAT_PROFILE, {
+          rotate: 0.15,
+          x: 0.3,
+          y: 0.9,
+          time: 180
+        }),
+        new FloatingMotionTarget(introAstronaut, setAstronautPose, ASTRONAUT_FLOAT_PROFILE, {
+          rotate: 0.35,
+          x: 0.65,
+          y: 1.15,
+          time: 0
+        })
+      ];
+
+      function stepIntroFloat(timestamp) {
+        if (introFloatTargets.every((target) => !target.element)) {
+          introFloatFrame = 0;
           return;
         }
 
         if (prefersReducedMotion.matches) {
-          astronautFloatFrame = 0;
-          astronautFloatLastTime = 0;
-          astronautFloatStartTime = 0;
-          astronautNextTargetAt = 0;
-          astronautCurrentX = 0;
-          astronautCurrentY = 0;
-          astronautCurrentRotation = 0;
-          astronautTargetX = 0;
-          astronautTargetY = 0;
-          astronautTargetRotation = 0;
-          setAstronautPose(0, 0, 0);
+          introFloatFrame = 0;
+          introFloatLastTime = 0;
+          introFloatStartTime = 0;
+          introFloatTargets.forEach((target) => target.reset());
           return;
         }
 
-        if (!astronautFloatLastTime) {
-          astronautFloatLastTime = timestamp;
+        if (!introFloatLastTime) {
+          introFloatLastTime = timestamp;
         }
 
-        if (!astronautFloatStartTime) {
-          astronautFloatStartTime = timestamp;
+        if (!introFloatStartTime) {
+          introFloatStartTime = timestamp;
         }
 
-        if (!astronautNextTargetAt || timestamp >= astronautNextTargetAt) {
-          chooseAstronautTarget(timestamp);
-        }
+        const delta = Math.min(timestamp - introFloatLastTime, 40);
+        const elapsed = timestamp - introFloatStartTime;
+        introFloatLastTime = timestamp;
 
-        const delta = Math.min(timestamp - astronautFloatLastTime, 40);
-        const elapsed = timestamp - astronautFloatStartTime;
-        astronautFloatLastTime = timestamp;
-
-        const positionBlend = 1 - Math.exp(-delta / ASTRONAUT_FLOAT_PROFILE.blend.positionMs);
-        const rotationBlend = 1 - Math.exp(-delta / ASTRONAUT_FLOAT_PROFILE.blend.rotationMs);
-        const driftX = getAstronautDrift(elapsed, ASTRONAUT_FLOAT_PROFILE.drift.x, 0.65);
-        const driftY = getAstronautDrift(elapsed + 420, ASTRONAUT_FLOAT_PROFILE.drift.y, 1.15);
-        const driftRotation = getAstronautDrift(elapsed + 930, ASTRONAUT_FLOAT_PROFILE.drift.rotate, 0.35);
-
-        astronautCurrentX += (astronautTargetX - astronautCurrentX) * positionBlend;
-        astronautCurrentY += (astronautTargetY - astronautCurrentY) * positionBlend;
-        astronautCurrentRotation += (astronautTargetRotation - astronautCurrentRotation) * rotationBlend;
-
-        setAstronautPose(
-          astronautCurrentX + driftX,
-          astronautCurrentY + driftY,
-          astronautCurrentRotation + driftRotation
-        );
-        astronautFloatFrame = window.requestAnimationFrame(stepAstronautFloat);
+        introFloatTargets.forEach((target) => target.step(timestamp, delta, elapsed));
+        introFloatFrame = window.requestAnimationFrame(stepIntroFloat);
       }
 
-      function startAstronautFloat() {
-        window.cancelAnimationFrame(astronautFloatFrame);
-        astronautFloatFrame = 0;
-        astronautFloatLastTime = 0;
-        astronautFloatStartTime = 0;
-        astronautNextTargetAt = 0;
-        astronautCurrentX = 0;
-        astronautCurrentY = 0;
-        astronautCurrentRotation = 0;
-        astronautTargetX = 0;
-        astronautTargetY = 0;
-        astronautTargetRotation = 0;
-        setAstronautPose(0, 0, 0);
+      function startIntroFloat() {
+        window.cancelAnimationFrame(introFloatFrame);
+        introFloatFrame = 0;
+        introFloatLastTime = 0;
+        introFloatStartTime = 0;
+        introFloatTargets.forEach((target) => target.reset());
 
-        if (!introAstronaut || prefersReducedMotion.matches) {
+        if (introFloatTargets.every((target) => !target.element) || prefersReducedMotion.matches) {
           return;
         }
 
         window.requestAnimationFrame(() => {
-          astronautFloatFrame = window.requestAnimationFrame(stepAstronautFloat);
+          introFloatFrame = window.requestAnimationFrame(stepIntroFloat);
         });
+      }
+
+      function clearShootingStarTimer(starEl) {
+        const timerId = shootingStarTimers.get(starEl);
+
+        if (!timerId) {
+          return;
+        }
+
+        window.clearTimeout(timerId);
+        shootingStarTimers.delete(starEl);
+      }
+
+      function configureShootingStar(starEl) {
+        const directionPool = chooseRandom(SHOOTING_STAR_PROFILE.directionPools);
+
+        if (!directionPool) {
+          return;
+        }
+
+        const angleDeg = randomBetween(directionPool.angleMinDeg, directionPool.angleMaxDeg);
+        const travelVmax = randomBetween(
+          SHOOTING_STAR_PROFILE.travelMinVmax,
+          SHOOTING_STAR_PROFILE.travelMaxVmax
+        );
+        const angleRad = (angleDeg * Math.PI) / 180;
+        const distanceX = Math.cos(angleRad) * travelVmax;
+        const distanceY = Math.sin(angleRad) * travelVmax;
+
+        starEl.style.top = `${randomBetween(directionPool.topMin, directionPool.topMax).toFixed(1)}%`;
+        starEl.style.left = `${randomBetween(directionPool.leftMin, directionPool.leftMax).toFixed(1)}%`;
+        starEl.style.setProperty("--space-shooting-angle", `${angleDeg.toFixed(1)}deg`);
+        starEl.style.setProperty("--space-shooting-distance-x", `${distanceX.toFixed(2)}vmax`);
+        starEl.style.setProperty("--space-shooting-distance-y", `${distanceY.toFixed(2)}vmax`);
+        starEl.style.setProperty(
+          "--space-shooting-duration",
+          `${Math.round(randomBetween(SHOOTING_STAR_PROFILE.durationMinMs, SHOOTING_STAR_PROFILE.durationMaxMs))}ms`
+        );
+        starEl.style.setProperty(
+          "--space-shooting-length",
+          `${randomBetween(SHOOTING_STAR_PROFILE.lengthMinRem, SHOOTING_STAR_PROFILE.lengthMaxRem).toFixed(2)}rem`
+        );
+      }
+
+      function scheduleShootingStar(
+        starEl,
+        delayMinMs = SHOOTING_STAR_PROFILE.delayMinMs,
+        delayMaxMs = SHOOTING_STAR_PROFILE.delayMaxMs
+      ) {
+        clearShootingStarTimer(starEl);
+
+        if (!starEl || prefersReducedMotion.matches) {
+          return;
+        }
+
+        const delayMs = Math.round(randomBetween(delayMinMs, delayMaxMs));
+        const timerId = window.setTimeout(() => {
+          launchShootingStar(starEl);
+        }, delayMs);
+
+        shootingStarTimers.set(starEl, timerId);
+      }
+
+      function launchShootingStar(starEl) {
+        if (!starEl || prefersReducedMotion.matches) {
+          return;
+        }
+
+        clearShootingStarTimer(starEl);
+        configureShootingStar(starEl);
+        starEl.classList.remove("is-active");
+        void starEl.offsetWidth;
+        starEl.classList.add("is-active");
+      }
+
+      function stopShootingStars() {
+        shootingStarEls.forEach((starEl) => {
+          clearShootingStarTimer(starEl);
+          starEl.classList.remove("is-active");
+        });
+      }
+
+      function startShootingStars() {
+        stopShootingStars();
+
+        if (prefersReducedMotion.matches) {
+          return;
+        }
+
+        shootingStarEls.forEach((starEl, index) => {
+          scheduleShootingStar(
+            starEl,
+            SHOOTING_STAR_PROFILE.initialDelayMinMs + index * 420,
+            SHOOTING_STAR_PROFILE.initialDelayMaxMs + index * 980
+          );
+        });
+      }
+
+      function handleMotionPreferenceChange() {
+        startIntroFloat();
+
+        if (prefersReducedMotion.matches) {
+          stopShootingStars();
+          return;
+        }
+
+        startShootingStars();
       }
 
       function setGuestCredentials(credentials) {
@@ -1151,6 +1419,12 @@
 
       form.addEventListener("submit", handleLogin);
       guestCreateButton.addEventListener("click", handleGuestCreate);
+      shootingStarEls.forEach((starEl) => {
+        starEl.addEventListener("animationend", () => {
+          starEl.classList.remove("is-active");
+          scheduleShootingStar(starEl);
+        });
+      });
       usernameInput.addEventListener("focus", () => {
         if (usernameInput.readOnly) {
           usernameInput.select();
@@ -1162,15 +1436,16 @@
         }
       });
       if (typeof prefersReducedMotion.addEventListener === "function") {
-        prefersReducedMotion.addEventListener("change", startAstronautFloat);
+        prefersReducedMotion.addEventListener("change", handleMotionPreferenceChange);
       } else if (typeof prefersReducedMotion.addListener === "function") {
-        prefersReducedMotion.addListener(startAstronautFloat);
+        prefersReducedMotion.addListener(handleMotionPreferenceChange);
       }
       syncButtonState(false);
+      startShootingStars();
       if (introAstronaut && !introAstronaut.complete) {
-        introAstronaut.addEventListener("load", startAstronautFloat, { once: true });
+        introAstronaut.addEventListener("load", startIntroFloat, { once: true });
       } else {
-        startAstronautFloat();
+        startIntroFloat();
       }
     </script>
   </body>
