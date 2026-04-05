@@ -54,6 +54,7 @@ Conversation and surfaces:
 
 - `conversation/thread-view.js` exports `createAgentThreadView(config)` and is the shared renderer used by the admin agent and onscreen agent
 - `conversation/thread-view.js` supports an opt-in chat-bubble markdown mode through `config.renderMarkdownWithMarked`; that mode routes settled non-streaming assistant and user bubbles through the shared framework markdown helper, escapes raw HTML before parsing, strips unsafe markdown link or image URLs after render, wraps rendered tables in `.message-markdown-table-wrap`, removes empty generated table headers, and lets the owning feature attach a local assistant markdown class through `config.assistantMarkdownClassName`
+- `conversation/agent-thread.css` owns the baseline bubble sizing and wrapping rules for shared threads; user bubbles must keep natural compact width for short drafts but still wrap long lines inside the bubble so chat scrollers do not widen or grow horizontal scrollbars
 - `surfaces/cards.css` owns shared panel or card wrappers such as `space-panel`
 
 ## Visual System Rules

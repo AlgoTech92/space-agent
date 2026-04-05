@@ -232,7 +232,24 @@ type SpaceWidgetRemovalResult = {
   widgetIds: string[];
 };
 
+// Renderer-only edit against the numbered renderer lines returned by readWidget()/widgetText.
+// Line numbers are zero-based and metadata fields are updated through explicit patchWidget inputs.
+type SpaceWidgetTextEdit = {
+  content?: string;
+  from: number;
+  to?: number;
+};
+
+type SpaceWidgetWriteResult = {
+  space: SpaceSpaceRecord;
+  widgetId: string;
+  widgetPath: string;
+  // Plain metadata lines first, then `renderer:`, then zero-based numbered renderer lines.
+  widgetText: string;
+};
+
 type SpaceSpaceRecord = {
+  agentInstructions: string;
   createdAt: string;
   id: string;
   icon: string;
@@ -260,8 +277,40 @@ type SpaceSpaceListEntry = SpaceSpaceRecord & {
   widgetPreviewNames: string[];
 };
 
+type SpaceCurrentNamespace = {
+  agentInstructions: string;
+  byId: Record<string, any>;
+  icon: string;
+  iconColor: string;
+  id: string;
+  patchWidget(
+    widgetId: string,
+    options?: {
+      col?: number;
+      cols?: number;
+      edits?: SpaceWidgetTextEdit[];
+      lineEdits?: SpaceWidgetTextEdit[];
+      name?: string;
+      position?: Partial<SpaceWidgetPosition>;
+      row?: number;
+      rows?: number;
+      size?: SpaceWidgetSize;
+      title?: string;
+    }
+  ): Promise<SpaceWidgetWriteResult>;
+  path: string;
+  // Returns plain metadata lines first, then `renderer:`, then zero-based numbered renderer lines.
+  readWidget(widgetName: string): Promise<string>;
+  specialInstructions: string;
+  title: string;
+  updatedAt: string;
+  widgets: any[];
+  [key: string]: any;
+};
+
 type SpaceSpacesNamespace = {
   createSpace(options?: {
+    agentInstructions?: string;
     id?: string;
     icon?: string;
     iconColor?: string;
@@ -280,6 +329,7 @@ type SpaceSpacesNamespace = {
   duplicateSpace(spaceIdOrOptions?: string | { id?: string; newId?: string; spaceId?: string }): Promise<SpaceSpaceRecord>;
   getCurrentSpace(): SpaceSpaceRecord | null;
   installExampleSpace(options?: {
+    agentInstructions?: string;
     fromPath?: string;
     id?: string;
     icon?: string;
@@ -293,6 +343,21 @@ type SpaceSpacesNamespace = {
   }): Promise<SpaceSpaceRecord>;
   listSpaces(): Promise<SpaceSpaceListEntry[]>;
   openSpace(spaceId: string, options?: { replace?: boolean }): Promise<void>;
+  patchWidget(options: {
+    col?: number;
+    cols?: number;
+    edits?: SpaceWidgetTextEdit[];
+    id?: string;
+    lineEdits?: SpaceWidgetTextEdit[];
+    name?: string;
+    position?: Partial<SpaceWidgetPosition>;
+    row?: number;
+    rows?: number;
+    size?: SpaceWidgetSize;
+    spaceId?: string;
+    title?: string;
+    widgetId: string;
+  }): Promise<SpaceWidgetWriteResult>;
   readSpace(spaceId: string): Promise<SpaceSpaceRecord>;
   rearrangeWidgets(options: { spaceId?: string; widgetLayouts?: SpaceWidgetLayoutInput[]; widgets: SpaceWidgetLayoutInput[] }): Promise<SpaceSpaceRecord>;
   reloadCurrentSpace(): Promise<SpaceSpaceRecord>;
@@ -309,6 +374,7 @@ type SpaceSpacesNamespace = {
     widgetSizes?: Record<string, SpaceWidgetSize>;
   }): Promise<SpaceSpaceRecord>;
   saveSpaceMeta(options: {
+    agentInstructions?: string;
     id: string;
     icon?: string;
     iconColor?: string;
@@ -325,7 +391,9 @@ type SpaceSpacesNamespace = {
     spaceId?: string;
     title?: string | null;
     widgetId?: string;
-  }): Promise<{ space: SpaceSpaceRecord; widgetId: string; widgetPath: string }>;
+  }): Promise<SpaceWidgetWriteResult>;
+  current: SpaceCurrentNamespace | null;
+  currentId: string;
   widgetApiVersion: number;
   [key: string]: any;
 };
@@ -333,6 +401,7 @@ type SpaceSpacesNamespace = {
 type SpaceRuntime = {
   api?: SpaceApi;
   chat?: SpaceChat;
+  current?: SpaceCurrentNamespace | null;
   extend: SpaceExtend;
   fw?: SpaceFw;
   spaces?: SpaceSpacesNamespace;

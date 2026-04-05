@@ -19,12 +19,12 @@ This module owns:
 - `dashboard-launcher.html`, `dashboard-launcher.js`, and `dashboard-launcher.css`: dashboard-injected spaces launcher surface
 - `constants.js`: stable route, filesystem, schema, and widget-size constants for this module
 - `space-metadata.js`: shared space metadata normalization helpers and display fallbacks for untitled titles plus icon metadata
-- `storage.js`: logical app-file paths, `space.yaml` and widget-YAML parsing and serialization, space CRUD helpers, legacy widget migration, widget file writes, and public `/~/...` URL resolution
+- `storage.js`: logical app-file paths, `space.yaml` and widget-YAML parsing and serialization, space CRUD helpers, legacy widget migration, widget file writes, numbered widget-definition reads plus line-edit patching for agent consumption, and public `/~/...` URL resolution
 - `layout.js`: grid layout normalization, collision-safe placement, render-size resolution, and centered viewport-width first-fit packing for moving, resizing, minimizing, repairing, and rearranging widgets
 - `widget-sdk-core.js` and `widget-sdk.js`: compatibility widget SDK for legacy `defineWidget(...)` modules plus shared widget-size normalization helpers
 - `widget-render.js`: lightweight DOM rendering for simple widget return values such as strings, arrays, nodes, or JSON fallbacks
 - `ext/html/_core/dashboard/content_end/spaces-dashboard-launcher.html`: thin dashboard extension adapter
-- `ext/js/_core/onscreen_agent/prompt.js/buildOnscreenAgentSystemPromptSections/end/current-space.js`: spaces-owned prompt-section injection that reports live current-space widget state to the onscreen agent when the routed space is open
+- `ext/js/_core/onscreen_agent/prompt.js/buildOnscreenAgentSystemPromptSections/end/current-space.js`: spaces-owned prompt-section injection that adds current-space agent instructions plus live current-space widget state to the onscreen agent when the routed space is open
 - `ext/skills/spaces/skill.md`: onscreen-agent guidance for creating or updating space widgets; its frontmatter sets `metadata.always_loaded: true` so widget-authoring rules are always present in the onscreen prompt
 
 ## Persistence And Widget Contract
@@ -33,7 +33,8 @@ Spaces persist under the authenticated user's `~/spaces/<spaceId>/` root.
 
 Current files and folders:
 
-- `space.yaml`: canonical space manifest with `schema`, `id`, optional `title`, optional `icon`, optional `icon_color`, optional `special_instructions`, timestamps, layout order, signed position overrides, size overrides, and minimized widget ids
+- `space.yaml`: canonical space manifest with `schema`, `id`, optional `title`, optional `icon`, optional `icon_color`, optional `agent_instructions`, timestamps, layout order, signed position overrides, size overrides, and minimized widget ids
+- spaces should read legacy `special_instructions` values for backward compatibility, but rewrites should serialize the canonical `agent_instructions` field
 - `widgets/<widgetId>.yaml`: persisted widget definition file with `schema`, `id`, `name`, default `cols`, default `rows`, optional default `col` or `row`, and a multiline `renderer` function source string
 - `data/`: widget-owned structured data or downloaded files
 - `assets/`: widget-owned images or other static assets referenced through `/~/...` fetch URLs
@@ -51,13 +52,13 @@ Current widget contract:
 - the preferred authoring surface is `space.current.renderWidget({ id, name, cols, rows, renderer })`; the old `defineWidget(...)` module surface remains compatibility-only
 - widget ids come from the widget filename; the manifest does not own the canonical widget registry anymore
 - the widget `renderer` is stored as one function source string in widget YAML; first-party examples and skills should prefer the concise async-arrow shape shown in `ext/skills/spaces/skill.md`
-- the framework creates the widget body element and passes it to `renderer(parent, space, ctx)`
+- the framework creates the outer padded widget body plus an inner `[data-widget-body]` render target sized to the visible content box, excluding the title bar and chrome padding, and passes that inner target to `renderer(parent, space, ctx)`
 - `renderer(...)` should normally render directly into `parent`; simple returned strings, arrays, nodes, or fallback objects may still be rendered by the framework, but widget primitive helper DSLs are no longer part of this module contract
 - widgets that need formatted prose should prefer `space.utils.markdown.render(text, target)` so the framework-owned markdown wrapper and widget-global markdown styles stay aligned
 - `renderer(...)` may optionally return a cleanup function, or `{ output, cleanup }`, so rerenders and removals can tear down listeners or timers safely
 - the framework owns the outer card, the responsive grid, error states, rerender cleanup, and reload behavior, but it must not inject widget header chrome such as ids, titles, or dimension labels above widget output
 - widget default size and optional default position live in the widget YAML file; the actual live layout after rearrange or resize lives in `space.yaml`
-- widget size is capped at `12` columns by `12` rows; size normalization and resize interactions must clamp to that ceiling
+- widget size is capped at `24` columns by `24` rows; size normalization and resize interactions must clamp to that ceiling
 - generated or agent-authored widgets should choose only the grid footprint they actually need rather than defaulting to oversized cards; one logical grid cell is roughly `85px` square, about `5.3rem` at a `16px` root size, so widget defaults should use a reasonable column/row count and aspect ratio for the rendered content
 - generated widget scaffolds should not inject instructional title blocks or storage-explainer copy into the visible widget output
 
@@ -68,6 +69,8 @@ Current widget contract:
 Current stable helpers include:
 
 - `space.current.renderWidget(optionsOrId, cols?, rows?, renderer?)`
+- `space.current.readWidget(widgetName)`
+- `space.current.patchWidget(widgetId, { name?, cols?, rows?, col?, row?, edits? })`
 - `space.current.removeWidget(widgetId)`
 - `space.current.removeWidgets(widgetIds)`
 - `space.current.removeAllWidgets()`
@@ -98,6 +101,7 @@ Current stable helpers include:
 - `space.spaces.saveSpaceLayout({ id, widgetIds?, widgetPositions?, widgetSizes?, minimizedWidgetIds? })`
 - `space.spaces.toggleWidgets({ spaceId?, widgetIds })`
 - `space.spaces.upsertWidget({ spaceId?, widgetId?, name?, cols?, rows?, renderer?, source? })`
+- `space.spaces.patchWidget({ spaceId?, widgetId, name?, cols?, rows?, col?, row?, edits? })`
 - `space.spaces.renderWidget(optionsOrId, cols?, rows?, renderer?)`
 - `space.spaces.removeWidget({ spaceId?, widgetId })`
 - `space.spaces.removeWidgets({ spaceId?, widgetIds })`
@@ -107,18 +111,24 @@ Current stable helpers include:
 - `space.spaces.getCurrentSpace()`
 - `space.spaces.createWidgetSource(options?)`
 - `space.spaces.resolveAppUrl(logicalPath)`
+- `space.spaces.createSpace(options?)` and `space.spaces.installExampleSpace(options?)` should push a new `#/spaces?id=...` history entry by default when they open the created space so browser back and the in-space back button can return to the dashboard or previous route; only callers that are intentionally collapsing an intermediate route such as `#/spaces?new=1` should pass `replace: true`
 
 Current runtime split:
 
 - Alpine UI state lives in the `spacesPage` store exposed as `$store.spacesPage`
 - current-space browser authoring should go through `space.current`
+- `space.current.readWidget(widgetName)` should resolve the current space's widgets by id or displayed name, read the widget YAML file, and return compact plain text with metadata lines such as `id`, `name`, `cols`, `rows`, and optional default `col` or `row` first, then `renderer:`, then the dedented renderer lines numbered from `0`, so prompt consumers can inspect real widget source without raw YAML block-scalar indentation overhead
+- `space.current.patchWidget(widgetId, options)` should patch only the renderer body by applying Agent-Zero-style `edits: [{ from, to?, content? }]` against the latest zero-based numbered renderer lines from `readWidget(...)`, while direct widget metadata updates such as `name`, `cols`, `rows`, `col`, or `row` continue to flow through explicit inputs on the patch request
+- `space.current.renderWidget(...)`, `space.current.patchWidget(...)`, `space.spaces.renderWidget(...)`, `space.spaces.upsertWidget(...)`, and `space.spaces.patchWidget(...)` should return the normal widget write result plus a `widgetText` readback string in that same metadata-first plus numbered-renderer format so the agent can continue patching from the fresh post-write source without making a separate read first
+- prompt-facing guidance should strongly prefer `readWidget(...)` plus `patchWidget(...)` when the user wants to modify an existing widget, and should avoid direct file reads or full `renderWidget(...)` rewrites unless the user explicitly asks for a rewrite or the change is too broad for a clear patch
 - `space.current.widgets` and `space.current.byId` should expose each live widget's `id`, `name`, `state`, `position`, logical `size`, and `renderedSize` so prompt injection and browser execution can reason about the current canvas without re-reading `space.yaml`
+- `space.current.agentInstructions` should expose the live draft-backed current-space agent instructions, and `space.current.specialInstructions` should remain as a legacy alias for older prompt or widget code
 - cross-space CRUD, collections, and lower-level helpers live under `space.spaces`
 - caught spaces errors should be logged with `console.error(...)` before the UI shows its fallback notice
-- while the routed spaces canvas is open, the spaces-owned prompt extension should inject a `## Current Open Space` section through `_core/onscreen_agent/prompt.js/buildOnscreenAgentSystemPromptSections` that includes the current space id, title, icon, icon color, special instructions, widget order, and each widget's id, name, state, position, and size, plus the current-space batch helper signatures
+- while the routed spaces canvas is open, the spaces-owned prompt extension should inject a `## Current Space Agent Instructions` section whenever the current space defines agent instructions, then a `## Current Open Space` section through `_core/onscreen_agent/prompt.js/buildOnscreenAgentSystemPromptSections` that includes the current space id, title, icon, icon color, widget order, and each widget's id, name, state, position, and size, plus the current-space helper signatures including metadata-first `space.current.readWidget(...)`, renderer-line `space.current.patchWidget(...)`, and the preferred renderer parameter name `currentSpace`
 - the routed spaces page should stay canvas-only; listing spaces, creating spaces, and other management chrome belong on dashboard or overlay seams, not inside the space itself
 - the routed spaces page should expose a top-left current-space settings drawer that reuses the shared topbar and menu-panel glass primitives, stays about four logical grid cells wide when collapsed, keeps the rearrange action as an adjacent icon button in that same top bar, and expands downward to the bottom viewport edge for current-space settings
-- the settings drawer currently owns the editable space name plus a small icon trigger button immediately after that name field, and the space-specific instructions textarea; name and instructions autosave back into `space.yaml`, while icon and color selection should open the shared `_core/visual/icons/` modal instead of embedding a large picker directly inside the drawer
+- the settings drawer currently owns the editable space name plus a small icon trigger button immediately after that name field, and the space-level `Agent Instructions` textarea; title edits should stay draft-only while the name field is active and persist when editing ends through blur, Enter, drawer close, or route change, while agent instructions continue to debounce through `saveSpaceMeta(...)`; icon and color selection should open the shared `_core/visual/icons/` modal instead of embedding a large picker directly inside the drawer
 - a space with zero widgets should render the centered empty-canvas prompt with the login-style floating title motion instead of injecting demo widget content, and the prompt headline should stay white, regular-weight, and keep its intended short line breaks when viewport width allows
 - while a space is loading, the canvas should use the same centered floating-title treatment instead of a generic path/status card, and the loading copy should reveal itself with a slow one-second fade so fast loads do not flash it immediately
 - the empty-canvas prompt should also show a muted, non-animated example grid under the floating headline so the page suggests the kinds of agent-driven spaces users can ask for
@@ -134,14 +144,14 @@ Current runtime split:
 - icon-bearing header controls such as reload and close should render with the shared `x-icon` glyph path instead of raw text characters so the control chrome stays visually aligned
 - widget header controls must stay pointer-interactive above the drag strip; clicking reload, minimize, or close must not fall through into widget-move drag start
 - widget cards should use one flat dark surface color rather than a gradient, and the header chrome should use that same surface color with light transparency plus a restrained blur so text never overlaps title or control icons while scrolling underneath
-- the widget body is the scroll owner; its header-offset and bottom padding must stay inside the card height so resized widgets can scroll all the way to their last content line without clipping the bottom edge
+- the framework-owned `[data-widget-body]` render target is the scroll owner; its measured box must stay equal to the net visible content area so widgets that size themselves from `clientWidth`, `clientHeight`, or `ResizeObserver` do not count the title bar or outer chrome padding
 - widget keyboard handling must not steal normal onscreen-agent chat typing through global plain-key listeners; widgets that need keyboard input should either listen only while their own DOM is focused or use modified shortcuts such as `Ctrl` or `Cmd` combinations instead of bare letters, `Space`, or bare `Enter`
-- widget content should stay responsive to its own card dimensions and to later user resizes; avoid renderer layouts that depend on one fixed widget size, and prefer flexible wrapping, percentage-based sizing within the widget body, and local scrolling when content outgrows the available area
+- widget content should stay responsive to its own card dimensions and to later user resizes; avoid renderer layouts that depend on one fixed widget size, and prefer flexible wrapping, percentage-based sizing within the render target, and local scrolling when content outgrows the available area
 - move and resize interactions should feel smooth during pointer movement, then resolve and persist onto the snapped logical grid when released; temporary grid lines should appear only during widget move or resize, not during background pan, and dragging near the viewport edge may nudge the camera slowly but must stay within the existing widget bounds
 - widget titles belong in the top bar so minimized widgets remain identifiable
 - the outer widget card is the only required visual container; generated widget renderers should not impose their own nested rounded card backgrounds by default unless the user explicitly asks for that extra chrome
 - widget removal should delete the current widget file and tolerate a missing legacy widget-file path instead of failing the close action on already-migrated spaces
-- the routed canvas top-left glass bar should expose a chevron-style back icon button on the left, the rearrange icon button in the middle, and the current space title toggle on the right; the rearrange action recenters the camera at `0,0`, preserves minimized widgets, and rewrites widget positions into a centered packed layout that scans cells left to right and top to bottom, skips occupied cells immediately, and at each free cell places the largest remaining widget that fits within the viewport-width column threshold before moving onward; when continuing later in the current row would make the occupied layout too thin, the packer should defer to the next fresh row start instead of cascading that same deferral downward into a large vertical gap
+- the routed canvas top-left glass bar should expose a chevron-style back icon button on the left, the rearrange icon button in the middle, and the current space title toggle on the right; when the config drawer is open, the back and rearrange buttons should hide so the expanded drawer reads as one focused surface instead of competing with leave-space actions; the rearrange action recenters the camera at `0,0`, preserves minimized widgets, and rewrites widget positions into a centered packed layout that scans cells left to right and top to bottom, skips occupied cells immediately, and at each free cell places the largest remaining widget that fits within the viewport-width column threshold before moving onward; when continuing later in the current row would make the occupied layout too thin, the packer should defer to the next fresh row start instead of cascading that same deferral downward into a large vertical gap, but it should still keep compact same-row fills together when the remaining widgets can use that row without widening the layout
 - widgets created through `space.current.renderWidget(...)`, `space.spaces.renderWidget(...)`, or `space.spaces.upsertWidget(...)` should default into the first-fit best open slot under that same viewport-width packing rule rather than always starting at the origin or a static fallback coordinate, including the same fresh-row verticality guard used by rearrange
 - full space replays, including refreshes and agent-driven widget additions, should use a short fade-in so content does not pop in abruptly
 
@@ -157,12 +167,15 @@ Current dashboard integration:
 
 - keep persistence in logical app files under `~/spaces/`; do not introduce server-owned special storage for spaces
 - keep `space.yaml` and widget YAML files within the lightweight YAML subset that the shipped parser can round-trip reliably, including multiline block scalars for renderer source
+- keep widget-source inspection compact: when exposing widget YAML to prompt consumers, parse it first, rebuild only the useful metadata fields as plain text, dedent the `renderer` string, and number only the renderer lines from `0` so later patch edits target the exact editable surface
+- keep widget patching deterministic: `patchWidget(...)` should use the original zero-based numbered renderer lines, should not renumber later edits after inserts or deletes, should reject overlapping edits, should keep metadata updates out of renderer line patches, and should return the fresh metadata-first readback after every successful patch or render write
+- keep widget renderer signatures clear in repo-owned examples and generated guidance: prefer `async (parent, currentSpace) => { ... }` so the global `space` runtime is not shadowed by a renderer parameter named `space`
 - keep space icon metadata lightweight and display-oriented: store just the Material Symbols ligature name in `icon` and a normalized hex color in `icon_color`, and route icon or color picking through the shared `_core/visual/icons/` selector instead of duplicating catalog UI inside spaces
-- keep current-space metadata persistence debounced and route-safe: edits from the settings drawer should autosave through `saveSpaceMeta(...)`, flush on blur and route change, and avoid flashing stale values when switching spaces
+- keep current-space metadata persistence route-safe and draft-safe: title edits should not persist on every keystroke, agent-instruction edits may stay debounced through `saveSpaceMeta(...)`, blur or route change should still flush pending metadata, and a completed save must not write stale server-normalized values back over newer local drafts
 - keep layout normalization non-recursive for both size and position coercion so malformed or defaulted manifest values cannot blow the stack during space load
 - keep manifest normalization compatible with both serialized string size tokens and in-memory widget-size objects so persisted resizes survive refreshes
 - keep rearrange packing deterministic and viewport-aware: prefer greedy largest-first cell scanning within a viewport-width column threshold over a simple one-line strip, while still returning stable non-overlapping logical coordinates centered back onto the canvas
-- keep the verticality guard shared across rearrange and default new-widget placement: evaluate occupied width, occupied height, and fill ratio together, use it only to reject placements that would continue later in the current row, and fall through to the next fresh row start instead of repeatedly pushing the same widget farther down
+- keep the verticality guard shared across rearrange and default new-widget placement: evaluate occupied width, occupied height, and fill ratio together, use it only to reject placements that would continue later in the current row, preview same-row continuation before rejecting a compact fill, and fall through to the next fresh row start instead of repeatedly pushing the same widget farther down
 - keep new-widget auto-placement and rearrange on the same shared first-fit placement logic instead of duplicating separate heuristics in store and storage layers
 - keep current-space external mutations smooth: when the active space replays after agent-driven widget add or layout changes, prefer in-place re-render with previous-rect animation and camera preservation instead of a full loading-state reset
 - keep spaces height on a stable viewport-sized path that does not rely on fragile percentage-height chains; do not subtract stale fixed chrome heights such as old `100dvh - 5.5rem` offsets inside `spaces.css`

@@ -14,7 +14,7 @@ This module owns:
 
 - `dashboard-welcome.html`, `dashboard-welcome.js`, and `dashboard-welcome.css`: the injected welcome UI, preference loading and saving, and demo-space launch actions
 - `ext/html/_core/dashboard/content_start/dashboard-welcome.html`: thin dashboard extension adapter for the welcome surface
-- `examples/`: bundled demo-space folders copied into the user's writable spaces area on demand
+- `examples/`: the curated bundled example-space folders copied into the user's writable spaces area on demand; the current firmware bundle intentionally contains only `examples/arcade/`
 
 ## Local Contracts
 
@@ -31,6 +31,7 @@ Current persistence and demo-space contract:
 - the hide or show preference is stored in `~/conf/dashboard.yaml`
 - the only persisted setting currently owned here is whether the welcome panel is hidden
 - bundled demo spaces live under this module's `examples/` folder and are copied through the spaces runtime instead of being edited in place
+- `dashboard-welcome.js` owns the curated example list and per-card description copy; keep that list synchronized with the folders that actually exist under `examples/`
 - bundled demo `space.yaml` files should own the icon and color shown in the welcome cards, and installing a demo should preserve those values into the created user space
 - welcome actions should call the public `space.spaces.installExampleSpace(...)` runtime helper rather than duplicating filesystem logic locally
 - demo installs launched from the dashboard should push a new space route entry instead of replacing the dashboard route, so browser Back returns to the dashboard rather than exposing whatever older space happened to be behind it in history

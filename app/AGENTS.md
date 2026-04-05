@@ -202,7 +202,7 @@ Runtime guidance:
 - `globalThis.space` is scoped to the current window or iframe only; do not publish it into other browsing contexts
 - use `space.api` for authenticated backend calls
 - use `space.api.folderDownloadUrl(...)` when a folder download should stay as a browser attachment instead of fetching the archive blob into frontend memory
-- keep feature-owned runtime namespaces under `space` explicit and narrow; `_core/spaces` owns `space.current` for current-space widget authoring, live widget-state descriptors, and batch layout or toggle or removal helpers plus `space.spaces` for persisted space CRUD, loaded-space collections, lower-level widget or folder-copy duplication or storage helpers, and spaces-owned prompt context injection, `_core/onscreen_agent` owns `space.onscreenAgent` for overlay display control and prompt submission, and agent surfaces publish the active thread snapshot at `space.chat`
+- keep feature-owned runtime namespaces under `space` explicit and narrow; `_core/spaces` owns `space.current` for current-space widget authoring, widget-definition reads that expose plain metadata plus numbered renderer lines, widget patch helpers, live widget-state descriptors, and batch layout or toggle or removal helpers plus `space.spaces` for persisted space CRUD, loaded-space collections, lower-level widget or folder-copy duplication or storage helpers, and spaces-owned prompt context injection, `_core/onscreen_agent` owns `space.onscreenAgent` for overlay display control and prompt submission, and agent surfaces publish the active thread snapshot at `space.chat`
 - shared visual helpers may publish small reusable UI entry points under `space.visual`; the current shared selector contract is `_core/visual/icons/icon-color-selector.js`, which registers `space.visual.openIconColorSelector(options)` after that module is imported
 - use `space.api.userSelfInfo()` as the canonical browser-side identity and scope snapshot; it returns group membership plus the readable and writable logical app roots the current user can use from the frontend
 - use `space.config` for frontend reads of backend parameters that were explicitly marked `frontend_exposed`
@@ -247,7 +247,7 @@ Detailed visual subsystem rules now live in `app/L0/_all/mod/_core/visual/AGENTS
 - `admin/views/modules/` owns the firmware-backed modules panel; see `app/L0/_all/mod/_core/admin/views/modules/AGENTS.md`
 - `onscreen_agent/` owns the floating routed overlay agent; see `app/L0/_all/mod/_core/onscreen_agent/AGENTS.md`
 - `onscreen_menu/` owns the routed shell menu extension; see `app/L0/_all/mod/_core/onscreen_menu/AGENTS.md`
-- `spaces/` owns the routed spaces canvas, empty-canvas prompt, widget SDK, and persisted centered-coordinate space runtime plus dashboard-facing space metadata such as title, icon, color, and special instructions; see `app/L0/_all/mod/_core/spaces/AGENTS.md`
+- `spaces/` owns the routed spaces canvas, empty-canvas prompt, widget SDK and widget-size ceilings, and persisted centered-coordinate space runtime plus dashboard-facing space metadata such as title, icon, color, and agent instructions; see `app/L0/_all/mod/_core/spaces/AGENTS.md`
 
 ## Guidance
 

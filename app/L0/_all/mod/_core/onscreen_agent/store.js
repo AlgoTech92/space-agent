@@ -344,16 +344,6 @@ function trimHistoryTextToRecentMessages(text, targetFraction = 0.5) {
   return trimmed;
 }
 
-function summarizeProtocolMessage(message, maxLength = 280) {
-  const normalizedMessage = typeof message === "string" ? message.replace(/\s+/gu, " ").trim() : "";
-
-  if (normalizedMessage.length <= maxLength) {
-    return normalizedMessage;
-  }
-
-  return `${normalizedMessage.slice(0, maxLength - 3)}...`;
-}
-
 function isExecutionFollowUpKind(kind) {
   return kind === "execution-output" || kind === "execution-retry";
 }
@@ -380,43 +370,6 @@ function dataTransferContainsFiles(dataTransfer) {
   }
 
   return Number(dataTransfer.files?.length) > 0;
-}
-
-function executionResultHasUsableOutput(result) {
-  if (result?.error) {
-    return true;
-  }
-
-  if (result?.result !== undefined) {
-    return true;
-  }
-
-  if (Array.isArray(result?.loadedSkills) && result.loadedSkills.length > 0) {
-    return true;
-  }
-
-  return Array.isArray(result?.logs) && result.logs.length > 0;
-}
-
-function executionResultsNeedReturnedValue(results) {
-  if (!Array.isArray(results) || !results.length) {
-    return false;
-  }
-
-  return results.every((result) => !executionResultHasUsableOutput(result));
-}
-
-function buildMissingExecutionResultRetryMessage(executionOutputText) {
-  const summarizedOutput = summarizeProtocolMessage(executionOutputText);
-
-  return [
-    "Protocol correction: the last browser execution finished but returned no result.",
-    `Execution output: "${summarizedOutput}"`,
-    "Space Agent already runs your JavaScript inside an async function.",
-    "Use top-level await directly and end with a top-level return for the value you need.",
-    "Do not wrap the whole snippet in an async IIFE like `(async () => { ... })()` unless you also return it.",
-    "Execute again now. Do not stop until you have a result or a clear error."
-  ].join("\n");
 }
 
 function buildEmptyAssistantRetryMessage() {
@@ -509,24 +462,82 @@ function normalizeUiBubbleText(text) {
     .replace(/\n+$/u, "");
 }
 
+function findContentLineStart(content, index) {
+  let lineStart = Math.max(0, Math.min(index, content.length));
+
+  while (lineStart > 0 && content[lineStart - 1] !== "\n") {
+    lineStart -= 1;
+  }
+
+  return lineStart;
+}
+
+function stripTrailingExecutionSeparatorPrefix(content) {
+  if (typeof content !== "string" || !content) {
+    return "";
+  }
+
+  const separator = typeof execution.EXECUTION_SEPARATOR === "string" ? execution.EXECUTION_SEPARATOR : "";
+
+  if (!separator) {
+    return content;
+  }
+
+  const maxPrefixLength = Math.min(separator.length - 1, content.length);
+
+  for (let prefixLength = maxPrefixLength; prefixLength > 0; prefixLength -= 1) {
+    const separatorPrefix = separator.slice(0, prefixLength);
+
+    if (!content.endsWith(separatorPrefix)) {
+      continue;
+    }
+
+    const prefixStart = content.length - prefixLength;
+    const lineStart = findContentLineStart(content, prefixStart);
+
+    if (content.slice(lineStart, prefixStart).trim()) {
+      continue;
+    }
+
+    return content.slice(0, lineStart);
+  }
+
+  return content;
+}
+
 function extractAssistantBubbleText(content) {
   if (typeof content !== "string" || !content.trim()) {
     return "";
   }
 
-  let normalizedContent = content;
+  let normalizedContent = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const separator = typeof execution.EXECUTION_SEPARATOR === "string" ? execution.EXECUTION_SEPARATOR : "";
+  const separatorIndex = separator ? normalizedContent.indexOf(separator) : -1;
 
-  execution.extractExecuteBlocks(content).forEach((block) => {
-    if (typeof block?.raw === "string" && block.raw) {
-      normalizedContent = normalizedContent.replace(block.raw, "");
-    }
-  });
+  if (separatorIndex !== -1) {
+    normalizedContent = normalizedContent.slice(0, separatorIndex);
+  } else {
+    normalizedContent = stripTrailingExecutionSeparatorPrefix(normalizedContent);
+  }
 
   return normalizeUiBubbleText(normalizedContent);
 }
 
-function hasStreamingExecutionBlock(content) {
-  return execution.extractExecuteBlocks(content).length > 0;
+class UiBubble {
+  constructor(store) {
+    this.store = store;
+  }
+
+  update(text, hideAfterMs = 0) {
+    return this.store?.updateUiBubble(this, text, hideAfterMs) === true;
+  }
+
+  dismiss(options = {}) {
+    return this.store?.dismissUiBubble({
+      clearActive: options.clearActive === true,
+      bubble: this
+    }) === true;
+  }
 }
 
 function runOnNextFrame(callback) {
@@ -599,10 +610,12 @@ function getExecutionStatusText(code, index, total) {
 
 const model = {
   activeRequestController: null,
+  activeUiBubble: null,
   attachmentDragDepth: 0,
   composerActionMenuAnchor: null,
   composerActionMenuPosition: createComposerActionMenuPosition(),
   composerActionMenuRenderToken: 0,
+  compactAssistantBubble: null,
   compactAssistantBubbleMessageId: "",
   configPersistTimer: 0,
   chatRuntime: null,
@@ -630,7 +643,6 @@ const model = {
   isShellVisible: false,
   isUiBubbleMounted: false,
   isSending: false,
-  nextUiBubble: null,
   pendingHistorySnapshot: null,
   pendingStreamingMessage: null,
   promptHistoryMessages: [],
@@ -1259,35 +1271,35 @@ const model = {
     this.clearInteractionHintTimer();
 
     if (options.hideBubble === true) {
-      this.dismissUiBubble({
-        clearQueue: options.clearBubbleQueue !== false
-      });
+      this.dismissUiBubble();
     }
   },
 
   showCompactAssistantReplyBubble(assistantContent, options = {}) {
     if (!this.isCompactMode) {
-      return false;
+      return null;
     }
 
     const messageId = typeof options.messageId === "string" ? options.messageId : "";
-
-    if (messageId && this.compactAssistantBubbleMessageId === messageId) {
-      return false;
-    }
-
     const bubbleText = extractAssistantBubbleText(assistantContent);
 
     if (!bubbleText) {
-      return false;
+      return null;
     }
+
+    if (messageId && this.compactAssistantBubbleMessageId === messageId && this.compactAssistantBubble) {
+      const didUpdate = this.compactAssistantBubble.update(bubbleText);
+      return didUpdate ? this.compactAssistantBubble : null;
+    }
+
+    const bubble = this.showUiBubble(bubbleText);
 
     if (messageId) {
       this.compactAssistantBubbleMessageId = messageId;
+      this.compactAssistantBubble = bubble;
     }
 
-    this.showUiBubble(bubbleText);
-    return true;
+    return bubble;
   },
 
   maybeShowCompactStreamingAssistantBubble(assistantMessage) {
@@ -1295,13 +1307,9 @@ const model = {
       return false;
     }
 
-    if (!hasStreamingExecutionBlock(assistantMessage.content)) {
-      return false;
-    }
-
-    return this.showCompactAssistantReplyBubble(assistantMessage.content, {
+    return Boolean(this.showCompactAssistantReplyBubble(assistantMessage.content, {
       messageId: assistantMessage.id
-    });
+    }));
   },
 
   setStreamingAssistantStatus(content) {
@@ -1335,67 +1343,95 @@ const model = {
 
     if (!normalizedText.trim()) {
       this.dismissUiBubble({
-        clearQueue: true
+        clearActive: true
       });
-      return;
+      return null;
     }
 
-    this.nextUiBubble = {
-      hideAfterMs: normalizeUiBubbleHideDelay(hideAfterMs) || getAutoUiBubbleHideDelay(normalizedText),
-      text: normalizedText
-    };
-    this.flushUiBubbleQueue();
+    const bubble = new UiBubble(this);
+    this.activeUiBubble = bubble;
+    bubble.update(normalizedText, hideAfterMs);
+    return bubble;
   },
 
-  flushUiBubbleQueue() {
-    if (this.uiBubblePhase === "leaving") {
-      return;
+  updateUiBubble(bubble, text, hideAfterMs = 0) {
+    if (!bubble || this.activeUiBubble !== bubble) {
+      return false;
     }
 
-    if (this.isUiBubbleMounted) {
-      this.dismissUiBubble();
-      return;
+    const normalizedText = normalizeUiBubbleText(text);
+
+    if (!normalizedText.trim()) {
+      this.dismissUiBubble({
+        bubble
+      });
+      return false;
     }
 
-    const nextUiBubble = this.nextUiBubble;
+    const isEntering = this.isUiBubbleMounted && this.uiBubblePhase === "entering";
+    const shouldReopen = !this.isUiBubbleMounted || this.uiBubblePhase === "leaving";
+    const nextHideAfterMs = normalizeUiBubbleHideDelay(hideAfterMs) || getAutoUiBubbleHideDelay(normalizedText);
 
-    if (!nextUiBubble) {
-      return;
-    }
-
-    this.nextUiBubble = null;
     this.clearUiBubbleExitTimer();
-    this.clearUiBubbleEnterTimer();
+
+    if (!isEntering) {
+      this.clearUiBubbleEnterTimer();
+    }
+
     this.clearUiBubbleAutoHideTimer();
-    this.uiBubbleText = nextUiBubble.text;
-    this.isUiBubbleMounted = true;
+    this.uiBubbleText = normalizedText;
     this.renderUiBubbleContent();
-    this.uiBubblePhase = "entering";
-    this.uiBubbleEnterTimer = window.setTimeout(() => {
-      this.uiBubbleEnterTimer = 0;
 
-      if (!this.isUiBubbleMounted || this.uiBubblePhase !== "entering") {
-        return;
-      }
+    if (shouldReopen) {
+      this.isUiBubbleMounted = true;
+      this.uiBubblePhase = "entering";
+      this.uiBubbleEnterTimer = window.setTimeout(() => {
+        this.uiBubbleEnterTimer = 0;
 
+        if (!this.isUiBubbleMounted || this.activeUiBubble !== bubble || this.uiBubblePhase !== "entering") {
+          return;
+        }
+
+        this.uiBubblePhase = "visible";
+      }, UI_BUBBLE_ENTER_DURATION_MS);
+    } else if (!isEntering) {
       this.uiBubblePhase = "visible";
-    }, UI_BUBBLE_ENTER_DURATION_MS);
+    }
 
-    if (nextUiBubble.hideAfterMs > 0) {
+    if (nextHideAfterMs > 0) {
+      const autoHideDelay = this.uiBubblePhase === "entering"
+        ? UI_BUBBLE_ENTER_DURATION_MS + nextHideAfterMs
+        : nextHideAfterMs;
+
       this.uiBubbleAutoHideTimer = window.setTimeout(() => {
         this.uiBubbleAutoHideTimer = 0;
-        this.dismissUiBubble();
-      }, UI_BUBBLE_ENTER_DURATION_MS + nextUiBubble.hideAfterMs);
+
+        if (this.activeUiBubble !== bubble) {
+          return;
+        }
+
+        this.dismissUiBubble({
+          bubble
+        });
+      }, autoHideDelay);
     }
+
+    return true;
   },
 
   dismissUiBubble(options = {}) {
-    if (options.clearQueue === true) {
-      this.nextUiBubble = null;
+    const bubble = options.bubble || null;
+
+    if (bubble && this.activeUiBubble !== bubble) {
+      return false;
+    }
+
+    if (options.clearActive === true && (!bubble || this.activeUiBubble === bubble)) {
+      this.activeUiBubble = null;
     }
 
     if (!this.isUiBubbleMounted || this.uiBubblePhase === "leaving") {
-      return;
+      return false;
     }
 
     this.clearUiBubbleEnterTimer();
@@ -1407,8 +1443,8 @@ const model = {
       this.uiBubblePhase = "";
       this.uiBubbleText = "";
       this.renderUiBubbleContent();
-      this.flushUiBubbleQueue();
     }, UI_BUBBLE_EXIT_DURATION_MS);
+    return true;
   },
 
   renderUiBubbleContent() {
@@ -1752,7 +1788,9 @@ const model = {
     this.clearUiBubbleAutoHideTimer();
     this.clearUiBubbleExitTimer();
     this.closeComposerActionMenu();
-    this.nextUiBubble = null;
+    this.activeUiBubble = null;
+    this.compactAssistantBubble = null;
+    this.compactAssistantBubbleMessageId = "";
     this.isUiBubbleMounted = false;
     this.uiBubblePhase = "";
     this.uiBubbleText = "";
@@ -1957,9 +1995,7 @@ const model = {
     }
 
     if (shouldHideBubble) {
-      this.dismissUiBubble({
-        clearQueue: true
-      });
+      this.dismissUiBubble();
     }
 
     this.render({
@@ -2440,8 +2476,19 @@ const model = {
   handleComposerKeydown(event) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      this.handleComposerPrimaryAction();
+      this.handleComposerSubmitAction();
     }
+  },
+
+  handleComposerSubmitAction() {
+    this.recordInteraction();
+
+    if (this.isSending) {
+      this.queueDraftSubmission();
+      return;
+    }
+
+    void this.submitMessage();
   },
 
   handleComposerPrimaryAction() {
@@ -2591,8 +2638,10 @@ const model = {
     this.activeRequestController?.abort();
     this.activeRequestController = null;
     this.dismissUiBubble({
-      clearQueue: true
+      clearActive: true
     });
+    this.compactAssistantBubble = null;
+    this.compactAssistantBubbleMessageId = "";
 
     if (this.chatRuntime?.attachments) {
       this.chatRuntime.attachments.clear();
@@ -2861,8 +2910,6 @@ const model = {
 
     let nextUserMessage = initialUserMessage;
     let emptyAssistantRetryCount = 0;
-    let missingExecutionResultRetryCount = 0;
-
     while (nextUserMessage) {
       if (this.isHistoryOverConfiguredMaxTokens()) {
         const pendingMessageIsLatestHistoryMessage = this.history[this.history.length - 1]?.id === nextUserMessage.id;
@@ -3014,30 +3061,6 @@ const model = {
         return boundaryActionAfterExecution;
       }
 
-      if (
-        executionResultsNeedReturnedValue(executionResults) &&
-        missingExecutionResultRetryCount < MAX_PROTOCOL_RETRY_COUNT
-      ) {
-        missingExecutionResultRetryCount += 1;
-        nextUserMessage = await createProcessedMessage(
-          "user",
-          buildMissingExecutionResultRetryMessage(executionOutputMessage.content),
-          {
-            kind: "execution-retry"
-          },
-          {
-            executionOutputMessage,
-            executionResults,
-            history: this.history,
-            phase: "execution-retry",
-            store: this
-          }
-        );
-        this.status = "Retrying: browser code returned no result...";
-        continue;
-      }
-
-      missingExecutionResultRetryCount = 0;
       nextUserMessage = executionOutputMessage;
       this.status = "Sending code execution output...";
     }

@@ -25,6 +25,8 @@
               <button
                 type="button"
                 class="space-topbar-button space-topbar-button--icon spaces-config-back"
+                x-cloak
+                x-show="!$store.spacesPage.isConfigPanelOpen"
                 aria-label="Go back"
                 title="Go back"
                 @click="void $store.spacesPage.goBackToDashboard()"
@@ -33,7 +35,8 @@
               </button>
 
               <button
-                x-show="$store.spacesPage.currentSpace?.widgetIds?.length"
+                x-cloak
+                x-show="!$store.spacesPage.isConfigPanelOpen && $store.spacesPage.currentSpace?.widgetIds?.length"
                 type="button"
                 class="space-topbar-button space-topbar-button--icon spaces-config-action"
                 aria-label="Rearrange space"
@@ -76,7 +79,7 @@
                       class="spaces-config-field-input"
                       placeholder="Untitled"
                       x-model="$store.spacesPage.currentSpaceTitleDraft"
-                      @input="$store.spacesPage.queueCurrentSpaceMetaSave()"
+                      @keydown.enter.prevent="if (!$event.isComposing) { $event.target.blur() }"
                       @blur="void $store.spacesPage.flushCurrentSpaceMetaSave({ suppressErrors: true })"
                     />
 
@@ -94,7 +97,7 @@
                 </label>
 
                 <label class="spaces-config-field spaces-config-field--grow">
-                  <span class="spaces-config-field-label">Special Instructions</span>
+                  <span class="spaces-config-field-label">Agent Instructions</span>
                   <textarea
                     class="spaces-config-field-textarea"
                     placeholder="Add space-specific instructions for the Space Agent."

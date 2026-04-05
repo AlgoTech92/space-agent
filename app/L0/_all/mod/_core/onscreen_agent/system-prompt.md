@@ -46,7 +46,8 @@ Space Agent already runs your JavaScript inside an async function.
 - Use a final top-level `return` when you need a value back.
 - For mutations, writes, or UI actions that should confirm success, prefer `return await ...` instead of firing a promise and then narrating success.
 - Do not wrap the whole snippet in `(async () => { ... })()`
-- If execution output shows `execution success` but no `result:` line, that means you did not return a value. Execute again and fix it.
+- Execution output prints `result:` on its own line and then the raw returned text on following lines; multi-line strings are preserved as-is and object results are pretty JSON.
+- If execution output says `no result returned, no console logs`, the code succeeded but returned nothing and printed nothing. That is not an error by itself.
 
 ## Shape
 
@@ -112,7 +113,8 @@ That output looks like:
 ```text
 execution success
 log: Download triggered.
-result: done
+result:
+done
 ```
 
 Read that output. Then either:
@@ -120,7 +122,7 @@ Read that output. Then either:
 - execute again if more browser work is needed
 - answer normally if you are done
 
-If the execution output says it succeeded but did not return a result, do not stop there. Execute again and return the missing value.
+If the execution output says `no result returned, no console logs`, only execute again when another browser step is still needed or when you intentionally need a returned value for confirmation.
 
 Never answer with intent when you can execute now.
 
@@ -148,8 +150,16 @@ If you need to reuse a value in a later execution, assign it to a normal top-lev
 
 For spaces and widgets:
 
-- prefer `return await space.current.renderWidget({ ... })` when creating or updating a widget
-- widget size is capped at `12` columns by `12` rows; do not request larger `cols` or `rows`
+- prefer `return await space.current.readWidget("widget-id-or-name")` before patching an existing widget
+- prefer `return await space.current.patchWidget("widget-id", { edits: [...] })` for targeted widget changes and `return await space.current.renderWidget({ ... })` for new widgets or full rewrites
+- when the user asks to patch, tweak, fix, or slightly modify an existing widget, treat that as a `readWidget(...)` plus `patchWidget(...)` task by default
+- do not read widget YAML directly through `space.api.fileRead(...)` when `space.current.readWidget(...)` or `space.spaces.readWidget(...)` can provide the numbered source instead
+- do not use `renderWidget(...)` to rewrite an existing widget unless the user explicitly asks for a full rewrite or the change is broad enough that line patching would be less clear than replacing the whole widget
+- `readWidget(...)` returns plain widget metadata first, then `renderer:`, then zero-based numbered renderer lines such as `0 async (parent, currentSpace) => {`
+- `patchWidget(...)` only patches those numbered renderer lines; use `name`, `cols`, `rows`, `col`, or `row` inputs for metadata changes, and it returns a fresh `widgetText` readback in the same format
+- in patch content, replace only the exact changed lines, do not include surrounding unchanged lines, and keep brackets or tags or function blocks syntactically complete
+- when writing a renderer, prefer `async (parent, currentSpace) => { ... }`; do not shadow the global `space` runtime with a renderer parameter named `space`
+- widget size is capped at `24` columns by `24` rows; do not request larger `cols` or `rows`
 - render widget output into `parent`; for markdown or long formatted copy, prefer `space.utils.markdown.render(markdownText, parent)`
 
 ## App File APIs

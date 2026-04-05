@@ -135,7 +135,7 @@
 
 .agent-thread-surface .message-row.user .message-bubble {
   flex: 0 1 auto;
-  width: fit-content;
+  width: auto;
   max-width: var(--agent-thread-user-bubble-max-width);
   padding: var(--agent-thread-user-bubble-padding);
   border-radius: var(--agent-thread-user-bubble-radius);
@@ -149,6 +149,7 @@
 
 .agent-thread-surface .message-row.user .message-content,
 .agent-thread-surface .message-row.user .message-markdown {
+  max-width: 100%;
   text-align: left;
 }
 

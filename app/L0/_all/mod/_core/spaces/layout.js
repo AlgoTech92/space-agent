@@ -332,6 +332,59 @@ function isScanCellOccupied(position, occupiedRects) {
   return !canPlaceRect(position, { cols: 1, rows: 1 }, occupiedRects);
 }
 
+function findPhysicallyFittingEntry(entries, position, widthThreshold, occupiedRects) {
+  for (const entry of entries) {
+    if ((position.col + entry.size.cols) > widthThreshold) {
+      continue;
+    }
+
+    if (!canPlaceRect(position, entry.size, occupiedRects)) {
+      continue;
+    }
+
+    return entry;
+  }
+
+  return null;
+}
+
+function buildSameRowPreviewMetrics(entries, entry, position, widthThreshold, occupiedRects, placedPositions = {}, placedSizes = {}) {
+  const previewPositions = {
+    ...placedPositions,
+    [entry.widgetId]: position
+  };
+  const previewSizes = {
+    ...placedSizes,
+    [entry.widgetId]: entry.size
+  };
+  const previewOccupiedRects = [...occupiedRects, createRect(entry.widgetId, position, entry.size)];
+  const remainingEntries = sortPackingEntries(entries.filter((candidate) => candidate.widgetId !== entry.widgetId));
+
+  for (let col = position.col + 1; col < widthThreshold; col += 1) {
+    const previewPosition = {
+      col,
+      row: position.row
+    };
+
+    if (isScanCellOccupied(previewPosition, previewOccupiedRects)) {
+      continue;
+    }
+
+    const nextEntry = findPhysicallyFittingEntry(remainingEntries, previewPosition, widthThreshold, previewOccupiedRects);
+
+    if (!nextEntry) {
+      continue;
+    }
+
+    previewPositions[nextEntry.widgetId] = previewPosition;
+    previewSizes[nextEntry.widgetId] = nextEntry.size;
+    previewOccupiedRects.push(createRect(nextEntry.widgetId, previewPosition, nextEntry.size));
+    remainingEntries.splice(remainingEntries.indexOf(nextEntry), 1);
+  }
+
+  return computePackedMetrics(previewPositions, previewSizes);
+}
+
 function findLargestEntryForPosition(entries, position, widthThreshold, occupiedRects, placedPositions = {}, placedSizes = {}) {
   const currentMetrics = computePackedMetrics(placedPositions, placedSizes);
   let hasPhysicalFit = false;
@@ -359,6 +412,23 @@ function findLargestEntryForPosition(entries, position, widthThreshold, occupied
     );
 
     if (!shouldPreferNextRow(currentMetrics, nextMetrics, position)) {
+      return {
+        entry,
+        preferNextRow: false
+      };
+    }
+
+    const sameRowPreviewMetrics = buildSameRowPreviewMetrics(
+      entries,
+      entry,
+      position,
+      widthThreshold,
+      occupiedRects,
+      placedPositions,
+      placedSizes
+    );
+
+    if (!shouldPreferNextRow(currentMetrics, sameRowPreviewMetrics, position)) {
       return {
         entry,
         preferNextRow: false

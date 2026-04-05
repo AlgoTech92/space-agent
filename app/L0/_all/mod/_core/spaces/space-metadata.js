@@ -28,9 +28,15 @@ export function normalizeSpaceTitle(value) {
   return String(value ?? "").trim();
 }
 
-export function normalizeSpaceSpecialInstructions(value) {
+function normalizeSpaceInstructions(value) {
   return normalizeLineEndings(value).trim();
 }
+
+export function normalizeSpaceAgentInstructions(value) {
+  return normalizeSpaceInstructions(value);
+}
+
+export const normalizeSpaceSpecialInstructions = normalizeSpaceAgentInstructions;
 
 export function normalizeSpaceIcon(value) {
   return normalizeMaterialSymbolName(value);

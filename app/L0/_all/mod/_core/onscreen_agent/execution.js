@@ -7,8 +7,6 @@ const SHARED_STATE_KEY = "__spaceOnscreenAgentSharedState";
 const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug", "dir", "table", "assert"];
 const INTERNAL_SCOPE_KEYS = new Set(["__spaceScope", "__spaceWindow"]);
 const WINDOW_ALIAS_KEYS = new Set(["page", "window", "globalThis", "self"]);
-const MAX_STRING_LENGTH = 220;
-const MAX_COLLECTION_ENTRIES = 8;
 const MAX_FORMAT_DEPTH = 2;
 
 function isLoadedOnscreenSkill(value) {
@@ -182,16 +180,12 @@ function summarizeNode(targetWindow, value) {
 }
 
 function formatString(value) {
-  if (value.length <= MAX_STRING_LENGTH) {
-    return value;
-  }
-
-  return `${value.slice(0, MAX_STRING_LENGTH - 3)}...`;
+  return value;
 }
 
 function formatEntries(entries, opener, closer, options) {
   const { depth, seen, targetWindow } = options;
-  const renderedEntries = entries.slice(0, MAX_COLLECTION_ENTRIES).map(([key, value]) => {
+  const renderedEntries = entries.map(([key, value]) => {
     return `${key}: ${formatExecutionValue(value, {
       depth: depth + 1,
       seen,
@@ -199,28 +193,18 @@ function formatEntries(entries, opener, closer, options) {
     })}`;
   });
 
-  if (entries.length > MAX_COLLECTION_ENTRIES) {
-    renderedEntries.push("...");
-  }
-
   return `${opener}${renderedEntries.join(", ")}${closer}`;
 }
 
 function formatArrayLike(values, label, options) {
   const { depth, seen, targetWindow } = options;
-  const renderedValues = Array.from(values)
-    .slice(0, MAX_COLLECTION_ENTRIES)
-    .map((value) =>
-      formatExecutionValue(value, {
-        depth: depth + 1,
-        seen,
-        targetWindow
-      })
-    );
-
-  if (values.length > MAX_COLLECTION_ENTRIES) {
-    renderedValues.push("...");
-  }
+  const renderedValues = Array.from(values).map((value) =>
+    formatExecutionValue(value, {
+      depth: depth + 1,
+      seen,
+      targetWindow
+    })
+  );
 
   return `${label}(${values.length}) [${renderedValues.join(", ")}]`;
 }
@@ -554,6 +538,130 @@ function flattenExecutionMessageValue(value) {
     .join("\\n");
 }
 
+function normalizeExecutionTextBlock(value) {
+  return String(value ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+}
+
+function appendExecutionTextBlock(lines, label, value) {
+  const normalizedValue = normalizeExecutionTextBlock(value);
+  const valueLines = normalizedValue.split("\n");
+
+  lines.push(`${label}:`);
+  lines.push(...valueLines);
+}
+
+function createExecutionJsonReplacer(targetWindow) {
+  const seen = new WeakSet();
+
+  return function executionJsonReplacer(_key, value) {
+    if (typeof value === "bigint") {
+      return String(value);
+    }
+
+    if (typeof value === "symbol") {
+      return value.toString();
+    }
+
+    if (typeof value === "function") {
+      return `[Function ${value.name || "anonymous"}]`;
+    }
+
+    if (value instanceof Error) {
+      return {
+        message: value.message || String(value),
+        name: value.name || "Error",
+        stack: value.stack || undefined
+      };
+    }
+
+    if (value === targetWindow) {
+      return `[Window ${targetWindow.location?.href || ""}]`;
+    }
+
+    if (targetWindow.Document && value instanceof targetWindow.Document) {
+      return `[Document ${value.URL || ""}]`;
+    }
+
+    if (targetWindow.Location && value instanceof targetWindow.Location) {
+      return `[Location ${value.href || ""}]`;
+    }
+
+    if (isNodeLike(targetWindow, value)) {
+      return summarizeNode(targetWindow, value);
+    }
+
+    if (targetWindow.NodeList && value instanceof targetWindow.NodeList) {
+      return Array.from(value);
+    }
+
+    if (targetWindow.HTMLCollection && value instanceof targetWindow.HTMLCollection) {
+      return Array.from(value);
+    }
+
+    if (value instanceof Map) {
+      return Array.from(value.entries());
+    }
+
+    if (value instanceof Set) {
+      return Array.from(value.values());
+    }
+
+    if (value && typeof value === "object") {
+      if (seen.has(value)) {
+        return "[Circular]";
+      }
+
+      seen.add(value);
+    }
+
+    return value;
+  };
+}
+
+function formatExecutionResultValue(value, options) {
+  const { targetWindow } = options;
+
+  if (value === undefined) {
+    return "";
+  }
+
+  if (value === null) {
+    return "null";
+  }
+
+  if (typeof value === "string") {
+    return normalizeExecutionTextBlock(value);
+  }
+
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+
+  if (typeof value === "symbol") {
+    return value.toString();
+  }
+
+  if (typeof value === "function" || value instanceof Error) {
+    return formatExecutionValue(value, {
+      targetWindow
+    });
+  }
+
+  if (typeof value === "object") {
+    try {
+      return normalizeExecutionTextBlock(JSON.stringify(value, createExecutionJsonReplacer(targetWindow), 2));
+    } catch (error) {
+      // Fall back to the console-oriented formatter for unserializable objects.
+    }
+  }
+
+  return formatExecutionValue(value, {
+    targetWindow
+  });
+}
+
 function formatExecutionResultLines(result) {
   const status = typeof result?.status === "string" && result.status.trim() ? result.status.trim() : "done";
   const lines = [`execution ${status}`];
@@ -574,12 +682,11 @@ function formatExecutionResultLines(result) {
   });
 
   if (result?.result !== undefined && !isLoadedOnscreenSkill(result?.result)) {
-    lines.push(`result: ${flattenExecutionMessageValue(result.resultText)}`);
+    appendExecutionTextBlock(lines, "result", result.resultText);
   }
 
   if (!result?.error?.text && result?.result === undefined && !prints.length && !loadedSkills.length) {
-    lines.push("warning: JavaScript finished but returned no result.");
-    lines.push("warning: Use top-level return to send the final value back.");
+    lines.push("no result returned, no console logs");
   }
 
   if (result?.error?.text) {
@@ -696,7 +803,7 @@ export function createExecutionContext(options = {}) {
         resultText:
           error || result === undefined
             ? ""
-            : formatExecutionValue(result, {
+            : formatExecutionResultValue(result, {
                 targetWindow
               }),
         runId,

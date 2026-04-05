@@ -24,8 +24,10 @@ import {
   normalizeRendererSource,
   normalizeSpaceId,
   normalizeWidgetId,
+  patchWidget as patchWidgetFromStorage,
   previewWidgetRecord,
   readSpace,
+  readWidget as readWidgetFromStorage,
   removeSpace,
   removeWidget,
   removeWidgets as removeWidgetsFromStorage,
@@ -40,9 +42,9 @@ import {
   getSpaceDisplayIcon,
   getSpaceDisplayIconColor,
   getSpaceDisplayTitle,
+  normalizeSpaceAgentInstructions,
   normalizeSpaceIcon,
   normalizeSpaceIconColor,
-  normalizeSpaceSpecialInstructions,
   normalizeSpaceTitle
 } from "/mod/_core/spaces/space-metadata.js";
 import { openIconColorSelector } from "/mod/_core/visual/icons/icon-color-selector.js";
@@ -284,7 +286,7 @@ function ensureSpacesRuntimeNamespace() {
 
       if (options.open !== false && globalThis.space.router) {
         await namespace.openSpace(createdSpace.id, {
-          replace: options.replace !== false
+          replace: options.replace === true
         });
       }
 
@@ -324,7 +326,7 @@ function ensureSpacesRuntimeNamespace() {
 
       if (options.open !== false && globalThis.space.router) {
         await namespace.openSpace(createdSpace.id, {
-          replace: options.replace !== false
+          replace: options.replace === true
         });
       }
 
@@ -545,6 +547,24 @@ function ensureSpacesRuntimeNamespace() {
               space: currentSpace,
               widgetIds: []
             };
+
+      if (activeSpacesStore) {
+        await activeSpacesStore.handleExternalMutation(targetSpaceId);
+      }
+
+      return result;
+    },
+    patchWidget: async (options = {}) => {
+      const targetSpaceId = options.spaceId || activeSpacesStore?.currentSpaceId;
+
+      if (!targetSpaceId) {
+        throw new Error("A target spaceId is required to patch a widget.");
+      }
+
+      const result = await patchWidgetFromStorage({
+        ...options,
+        spaceId: targetSpaceId
+      });
 
       if (activeSpacesStore) {
         await activeSpacesStore.handleExternalMutation(targetSpaceId);
@@ -805,8 +825,11 @@ function createCurrentSpaceRuntime(namespace) {
     get path() {
       return activeSpacesStore?.currentSpace ? buildSpaceRootPath(activeSpacesStore.currentSpace.id) : "";
     },
-    get specialInstructions() {
+    get agentInstructions() {
       return activeSpacesStore?.currentSpaceInstructionsDraft || "";
+    },
+    get specialInstructions() {
+      return this.agentInstructions;
     },
     get title() {
       return activeSpacesStore?.currentSpaceTitleDraft || "";
@@ -831,6 +854,19 @@ function createCurrentSpaceRuntime(namespace) {
     },
     reloadWidget(widgetId) {
       return namespace.reloadWidget({
+        spaceId: activeSpacesStore?.currentSpaceId,
+        widgetId
+      });
+    },
+    readWidget(widgetName) {
+      return readWidgetFromStorage({
+        spaceId: activeSpacesStore?.currentSpaceId,
+        widgetName
+      });
+    },
+    patchWidget(widgetId, options = {}) {
+      return namespace.patchWidget({
+        ...options,
         spaceId: activeSpacesStore?.currentSpaceId,
         widgetId
       });
@@ -1688,15 +1724,18 @@ function createWidgetCardSkeleton(spaceRecord, widgetId, layoutEntry) {
   );
   const closeButton = createWidgetActionButton("spaces-widget-control-button", "", "Remove widget");
   const body = createElement("div", "spaces-widget-card-body");
+  const renderTarget = createElement("div", "spaces-widget-render-target");
   const resizeHandle = createWidgetActionButton("spaces-widget-resize-handle", "", "Resize widget");
   const reloadIcon = createElement("x-icon", "", "refresh");
   const closeIcon = createElement("x-icon", "", "close");
 
+  renderTarget.setAttribute("data-widget-body", "");
   reloadButton.appendChild(reloadIcon);
   closeButton.appendChild(closeIcon);
   handle.append(titleLabel);
   card.dataset.widgetId = widgetId;
-  body.appendChild(createWidgetPlaceholder("Loading widget..."));
+  renderTarget.appendChild(createWidgetPlaceholder("Loading widget..."));
+  body.appendChild(renderTarget);
   controls.append(handle, reloadButton, actions);
   actions.append(minimizeButton, closeButton);
   card.append(controls, body, resizeHandle);
@@ -1723,7 +1762,7 @@ function createWidgetCardSkeleton(spaceRecord, widgetId, layoutEntry) {
     void activeSpacesStore?.closeWidget(widgetId);
   });
 
-  return { body, card, cleanup: null, minimizeButton, reloadButton, titleLabel };
+  return { body, card, cleanup: null, minimizeButton, reloadButton, renderTarget, titleLabel };
 }
 
 function runWidgetCleanup(skeleton) {
@@ -1813,9 +1852,9 @@ async function renderWidgetCard(spaceRecord, widgetId, skeleton, loadToken, layo
   skeleton.minimizeButton.setAttribute("aria-label", skeleton.minimizeButton.title);
   skeleton.titleLabel.textContent = buildWidgetHeaderTitle(spaceRecord, widgetId);
   runWidgetCleanup(skeleton);
-  skeleton.body.replaceChildren();
+  skeleton.renderTarget.replaceChildren();
 
-  const rendered = await renderer(skeleton.body, globalThis.space, context);
+  const rendered = await renderer(skeleton.renderTarget, globalThis.space, context);
 
   if (loadToken !== activeSpacesStore?.widgetLoadToken) {
     if (typeof rendered === "function") {
@@ -1839,14 +1878,14 @@ async function renderWidgetCard(spaceRecord, widgetId, skeleton, loadToken, layo
     skeleton.cleanup = rendered.cleanup;
 
     if (rendered.output !== undefined) {
-      renderWidgetOutput(rendered.output, skeleton.body);
+      renderWidgetOutput(rendered.output, skeleton.renderTarget);
     }
 
     return;
   }
 
   if (rendered !== undefined) {
-    renderWidgetOutput(rendered, skeleton.body);
+    renderWidgetOutput(rendered, skeleton.renderTarget);
   }
 }
 
@@ -2035,8 +2074,8 @@ const spacesModel = {
       normalizeSpaceIcon(this.currentSpaceIconDraft) !== normalizeSpaceIcon(this.currentSpace.icon) ||
       normalizeSpaceIconColor(this.currentSpaceIconColorDraft) !== normalizeSpaceIconColor(this.currentSpace.iconColor) ||
       normalizeSpaceTitle(this.currentSpaceTitleDraft) !== normalizeSpaceTitle(this.currentSpace.title) ||
-      normalizeSpaceSpecialInstructions(this.currentSpaceInstructionsDraft) !==
-        normalizeSpaceSpecialInstructions(this.currentSpace.specialInstructions)
+      normalizeSpaceAgentInstructions(this.currentSpaceInstructionsDraft) !==
+        normalizeSpaceAgentInstructions(this.currentSpace.agentInstructions ?? this.currentSpace.specialInstructions)
     );
   },
 
@@ -2145,9 +2184,10 @@ const spacesModel = {
             displayIcon: getSpaceDisplayIcon(spaceRecord),
             displayIconColor: getSpaceDisplayIconColor(spaceRecord),
             displayTitle: getSpaceDisplayTitle(spaceRecord),
+            agentInstructions: spaceRecord.agentInstructions || spaceRecord.specialInstructions || "",
             icon: spaceRecord.icon,
             iconColor: spaceRecord.iconColor,
-            specialInstructions: spaceRecord.specialInstructions || "",
+            specialInstructions: spaceRecord.agentInstructions || spaceRecord.specialInstructions || "",
             title: spaceRecord.title,
             updatedAt: spaceRecord.updatedAt,
             updatedAtLabel: nextUpdatedAtLabel
@@ -2166,12 +2206,16 @@ const spacesModel = {
     }
 
     const targetSpaceId = this.currentSpaceId;
+    const normalizedAgentInstructions = normalizeSpaceAgentInstructions(this.currentSpaceInstructionsDraft);
+    const normalizedIcon = normalizeSpaceIcon(this.currentSpaceIconDraft);
+    const normalizedIconColor = normalizeSpaceIconColor(this.currentSpaceIconColorDraft);
+    const normalizedTitle = normalizeSpaceTitle(this.currentSpaceTitleDraft);
     const payload = {
+      agentInstructions: normalizedAgentInstructions,
       id: targetSpaceId,
-      icon: normalizeSpaceIcon(this.currentSpaceIconDraft),
-      iconColor: normalizeSpaceIconColor(this.currentSpaceIconColorDraft),
-      specialInstructions: normalizeSpaceSpecialInstructions(this.currentSpaceInstructionsDraft),
-      title: normalizeSpaceTitle(this.currentSpaceTitleDraft)
+      icon: normalizedIcon,
+      iconColor: normalizedIconColor,
+      title: normalizedTitle
     };
 
     this.savingSpaceMeta = true;
@@ -2180,18 +2224,39 @@ const spacesModel = {
         const savedSpace = await saveSpaceMeta(payload);
 
         if (this.currentSpaceId === targetSpaceId && this.currentSpace) {
+          const nextAgentInstructions = savedSpace.agentInstructions || savedSpace.specialInstructions || "";
+          const shouldSyncAgentInstructionsDraft =
+            normalizeSpaceAgentInstructions(this.currentSpaceInstructionsDraft) === normalizedAgentInstructions;
+          const shouldSyncIconDraft = normalizeSpaceIcon(this.currentSpaceIconDraft) === normalizedIcon;
+          const shouldSyncIconColorDraft = normalizeSpaceIconColor(this.currentSpaceIconColorDraft) === normalizedIconColor;
+          const shouldSyncTitleDraft = normalizeSpaceTitle(this.currentSpaceTitleDraft) === normalizedTitle;
+
           this.currentSpace = {
             ...this.currentSpace,
+            agentInstructions: nextAgentInstructions,
             icon: savedSpace.icon,
             iconColor: savedSpace.iconColor,
-            specialInstructions: savedSpace.specialInstructions || "",
+            specialInstructions: nextAgentInstructions,
             title: savedSpace.title,
             updatedAt: savedSpace.updatedAt
           };
-          this.currentSpaceIconColorDraft = savedSpace.iconColor || "";
-          this.currentSpaceIconDraft = savedSpace.icon || "";
-          this.currentSpaceTitleDraft = savedSpace.title;
-          this.currentSpaceInstructionsDraft = savedSpace.specialInstructions || "";
+
+          if (shouldSyncIconColorDraft) {
+            this.currentSpaceIconColorDraft = savedSpace.iconColor || "";
+          }
+
+          if (shouldSyncIconDraft) {
+            this.currentSpaceIconDraft = savedSpace.icon || "";
+          }
+
+          if (shouldSyncTitleDraft) {
+            this.currentSpaceTitleDraft = savedSpace.title;
+          }
+
+          if (shouldSyncAgentInstructionsDraft) {
+            this.currentSpaceInstructionsDraft = nextAgentInstructions;
+          }
+
           this.updateSpaceListEntry(this.currentSpace);
           syncSpacesRuntimeState();
         }
@@ -2873,7 +2938,7 @@ const spacesModel = {
     const loadToken = this.widgetLoadToken;
 
     skeleton.card.classList.remove("is-error");
-    skeleton.body.replaceChildren(createWidgetPlaceholder("Reloading widget..."));
+    skeleton.renderTarget.replaceChildren(createWidgetPlaceholder("Reloading widget..."));
 
     try {
       await renderWidgetCard(this.currentSpace, widgetId, skeleton, loadToken, layoutEntry);
@@ -2887,7 +2952,7 @@ const spacesModel = {
         widgetId
       });
       this.setNotice(formatErrorMessage(error, `Unable to reload widget "${widgetId}".`), "error");
-      skeleton.body.replaceChildren(
+      skeleton.renderTarget.replaceChildren(
         createWidgetPlaceholder(formatErrorMessage(error, `Unable to render widget "${widgetId}".`))
       );
       skeleton.card.classList.add("is-error");
@@ -3130,7 +3195,7 @@ const spacesModel = {
       this.currentSpaceIconColorDraft = spaceRecord.iconColor || "";
       this.currentSpaceIconDraft = spaceRecord.icon || "";
       this.currentSpaceId = spaceRecord.id;
-      this.currentSpaceInstructionsDraft = spaceRecord.specialInstructions || "";
+      this.currentSpaceInstructionsDraft = spaceRecord.agentInstructions || spaceRecord.specialInstructions || "";
       this.currentSpaceTitleDraft = spaceRecord.title;
       syncSpacesRuntimeState();
       await this.renderCurrentSpace(spaceRecord, loadToken);
@@ -3211,7 +3276,7 @@ const spacesModel = {
           widgetId
         });
         this.widgetErrorCount += 1;
-        skeleton.body.replaceChildren(
+        skeleton.renderTarget.replaceChildren(
           createWidgetPlaceholder(formatErrorMessage(error, `Unable to render widget "${widgetId}".`))
         );
         skeleton.card.classList.add("is-error");
@@ -3255,7 +3320,7 @@ const spacesModel = {
       this.currentSpaceIconColorDraft = spaceRecord.iconColor || "";
       this.currentSpaceIconDraft = spaceRecord.icon || "";
       this.currentSpaceId = spaceRecord.id;
-      this.currentSpaceInstructionsDraft = spaceRecord.specialInstructions || "";
+      this.currentSpaceInstructionsDraft = spaceRecord.agentInstructions || spaceRecord.specialInstructions || "";
       this.currentSpaceTitleDraft = spaceRecord.title;
       this.cameraOffsetPx = preservedCameraOffset;
       syncSpacesRuntimeState();

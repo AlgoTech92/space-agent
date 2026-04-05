@@ -101,7 +101,7 @@
                 <form
                   class="onscreen-agent-composer"
                   :class="{ 'is-compact': $store.onscreenAgent.isCompactMode }"
-                  @submit.prevent="$store.onscreenAgent.handleComposerPrimaryAction()"
+                  @submit.prevent="$store.onscreenAgent.handleComposerSubmitAction()"
                 >
                   <input
                     x-ref="attachmentInput"
