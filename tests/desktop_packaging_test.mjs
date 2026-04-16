@@ -26,9 +26,6 @@ const {
 } = require("../packaging/desktop/updater_artifacts.js");
 const {
   DESKTOP_UPDATER_LOG_RELATIVE_PATH,
-  WINDOWS_INSTALL_WAIT_TIMEOUT_MS,
-  buildWindowsDesktopUpdaterLaunchScript,
-  resolveDesktopUpdaterInstallPlan,
   resolveDesktopUpdaterLogPath,
   resolveWindowsUpdaterInstallerArgs
 } = require("../packaging/desktop/updater_install_options.js");
@@ -144,66 +141,36 @@ test("packaged desktop updater keeps a stable persistent log path under packaged
   );
 });
 
-test("packaged desktop updater defers Windows NSIS install until the current app exits", () => {
-  const userDataPath = String.raw`C:\Users\alice\AppData\Roaming\Space Agent`;
-  const installerPath = String.raw`C:\Users\alice\AppData\Local\space-agent-updater\pending\Space-Agent-0.49-windows-x64.exe`;
-  const currentExecutablePath = String.raw`C:\Users\alice\AppData\Local\Programs\Space Agent\Space Agent.exe`;
-  const logPath = resolveDesktopUpdaterLogPath({
-    userDataPath
-  });
-  const { script } = buildWindowsDesktopUpdaterLaunchScript({
-    installerPath,
-    currentExecutablePath,
-    currentProcessId: 4242,
-    autoRunAppAfterInstall: true,
-    logPath,
-    waitTimeoutMs: WINDOWS_INSTALL_WAIT_TIMEOUT_MS
-  });
-  const installPlan = resolveDesktopUpdaterInstallPlan({
-    platform: "win32",
-    installerPath,
-    currentExecutablePath,
-    currentProcessId: 4242,
-    autoRunAppAfterInstall: true,
-    userDataPath,
-    waitTimeoutMs: WINDOWS_INSTALL_WAIT_TIMEOUT_MS
-  });
-
-  assert.equal(installPlan.strategy, "deferred-powershell");
-  assert.equal(installPlan.command, "powershell.exe");
-  assert.deepEqual(installPlan.installerArgs, ["--updated", "--force-run"]);
-  assert.equal(installPlan.logPath, logPath);
-  assert.equal(installPlan.script, script);
-  assert.deepEqual(installPlan.args.slice(0, 7), [
-    "-NoProfile",
-    "-NonInteractive",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-WindowStyle",
-    "Hidden",
-    "-EncodedCommand"
-  ]);
-  assert.equal(installPlan.script.includes("Add-Content -LiteralPath $logPath"), true);
-  assert.match(installPlan.script, /Helper started\. Waiting for PID/);
-  assert.equal(installPlan.script.includes("Installer start command submitted. Args:"), true);
-  assert.match(installPlan.script, /Get-CimInstance Win32_Process/);
-  assert.match(installPlan.script, /Start-Sleep -Milliseconds 500/);
-  assert.equal(installPlan.script.includes("Start-Process -FilePath $installerPath -ArgumentList $installerArgs"), true);
-  assert.match(installPlan.script, /desktop-updater\.log/);
-  assert.equal(installPlan.script.includes("$parentPid = 4242"), true);
-  assert.match(installPlan.script, /Space Agent\\Space Agent.exe/);
-  assert.match(installPlan.script, /Space-Agent-0.49-windows-x64.exe/);
+test("packaged desktop updater keeps the stock silent Windows NSIS installer arguments", () => {
+  assert.deepEqual(
+    resolveWindowsUpdaterInstallerArgs({
+      autoRunAppAfterInstall: true,
+      isForceRunAfter: true,
+      isSilent: true,
+      packagePath: String.raw`C:\Users\alice\AppData\Local\space-agent-updater\package.7z`
+    }),
+    [
+      "--updated",
+      "/S",
+      "--force-run",
+      String.raw`--package-file=C:\Users\alice\AppData\Local\space-agent-updater\package.7z`
+    ]
+  );
 });
 
-test("packaged desktop updater keeps the default updater handoff on non-Windows platforms", () => {
-  assert.deepEqual(
-    resolveDesktopUpdaterInstallPlan({
-      platform: "darwin"
-    }),
-    {
-      strategy: "electron-updater"
-    }
+test("Windows NSIS installer hardens running-app shutdown and logs installer progress", async () => {
+  const installerInclude = await fs.readFile(
+    path.join(PROJECT_ROOT, "packaging", "platforms", "windows", "installer.nsh"),
+    "utf8"
   );
+
+  assert.match(installerInclude, /!macro customCheckAppRunning/);
+  assert.match(installerInclude, /Installer checking for running app processes under \$INSTDIR\./);
+  assert.match(installerInclude, /Installer is force-closing remaining app processes\./);
+  assert.match(installerInclude, /Installer confirmed that no app processes remain under \$INSTDIR\./);
+  assert.match(installerInclude, /Installer could not verify \$INSTDIR\\\$\{APP_EXECUTABLE_FILENAME\} after file copy\./);
+  assert.match(installerInclude, /\$APPDATA\\\$\{APP_PACKAGE_NAME\}\\logs/);
+  assert.match(installerInclude, /\$APPDATA\\Agent One\\logs/);
 });
 
 test("packaged desktop debug reinstall normalizes release versions and tags", () => {

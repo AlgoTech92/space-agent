@@ -60,6 +60,7 @@
 
       html {
         min-height: 100%;
+        background: #000000;
       }
 
       body.space-theme-canvas {
@@ -67,6 +68,7 @@
         align-items: center;
         min-height: 100vh;
         padding: clamp(0.875rem, 3vw, 2rem);
+        background: #000000;
         overflow-x: hidden;
         overflow-y: auto;
       }
@@ -114,6 +116,11 @@
         .shell-footer {
           animation: none;
         }
+
+        .shell,
+        .desktop-launcher-fade {
+          transition: none;
+        }
       }
 
       .shell {
@@ -125,6 +132,30 @@
         grid-template-columns: minmax(0, 1fr) minmax(19.5rem, 24rem);
         gap: clamp(1.5rem, 4vw, 3rem);
         align-items: center;
+        transition:
+          opacity 220ms ease,
+          transform 260ms ease,
+          filter 260ms ease;
+      }
+
+      .desktop-launcher-fade {
+        position: fixed;
+        inset: 0;
+        z-index: 12;
+        background: #000000;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 260ms ease;
+      }
+
+      body.launcher-exiting .shell {
+        opacity: 0;
+        transform: translateY(8px) scale(0.985);
+        filter: blur(6px);
+      }
+
+      body.launcher-exiting .desktop-launcher-fade {
+        opacity: 1;
       }
 
       .intro {
@@ -544,6 +575,7 @@
         <div class="space-backdrop-trail" data-space-backdrop-trail></div>
       </div>
     </div>
+    <div class="desktop-launcher-fade" aria-hidden="true"></div>
     <main class="shell">
       <section class="intro" aria-label="Space Agent overview">
         <div id="intro-floating-cluster" class="intro-floating-cluster">
@@ -690,6 +722,7 @@
       const desktopUpdateNoteDetails = document.getElementById("desktop-update-note-details");
       const desktopUpdateNoteSummary = document.getElementById("desktop-update-note-summary");
       const desktopUpdateNoteDetailsText = document.getElementById("desktop-update-note-details-text");
+      const LAUNCHER_EXIT_FADE_MS = 260;
       const TAU = Math.PI * 2;
       const TITLE_FLOAT_PARAMS = Object.freeze({
         movementDistance: 1.5,
@@ -758,6 +791,24 @@
         desktopUpdateButton.setAttribute("aria-busy", isBusy ? "true" : "false");
       }
 
+      function resetLauncherExitFade() {
+        document.body.classList.remove("launcher-exiting");
+        setDesktopUpdateButtonBusy(false);
+      }
+
+      async function playLauncherExitFade() {
+        document.body.classList.add("launcher-exiting");
+        setDesktopUpdateButtonBusy(true);
+
+        if (prefersReducedMotion.matches) {
+          return;
+        }
+
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, LAUNCHER_EXIT_FADE_MS);
+        });
+      }
+
       function renderDesktopUpdateNote(message, { expandable = false, summaryText = "Could not check updates" } = {}) {
         if (
           !desktopUpdateNote ||
@@ -799,6 +850,11 @@
         return Number(match[3]) === 0 ? match[1] + "." + match[2] : normalized;
       }
 
+      function formatDesktopUpdateButtonVersion(value) {
+        const version = formatDesktopDisplayVersion(value);
+        return version ? "v" + version.replace(/^v/u, "") : "";
+      }
+
       function renderDesktopUpdateState(updateStatus) {
         if (!desktopUpdateButton || !desktopUpdateNote) {
           return;
@@ -806,7 +862,7 @@
 
         const state = updateStatus && typeof updateStatus === "object" ? updateStatus : {};
         const statusKey = typeof state.state === "string" ? state.state : "idle";
-        const version = formatDesktopDisplayVersion(state.version);
+        const version = formatDesktopUpdateButtonVersion(state.version);
         const progressValue = Number(state.progress);
         let message = typeof state.message === "string" ? state.message.trim() : "";
         let buttonLabel = "";
@@ -824,7 +880,7 @@
           message = "";
           showButton = true;
         } else if (statusKey === "downloaded") {
-          buttonLabel = "Restart to Update";
+          buttonLabel = "Restart and update";
           message = "";
           showButton = true;
         } else if (statusKey === "up-to-date") {
@@ -893,6 +949,7 @@
 
           try {
             if (currentUpdateState.state === "downloaded") {
+              await playLauncherExitFade();
               await desktopApi.installUpdate();
               return;
             }
@@ -916,6 +973,7 @@
               });
             }
           } catch (error) {
+            resetLauncherExitFade();
             const message = error instanceof Error ? error.message : String(error || "Desktop update failed.");
             console.error("[space-enter] Desktop update action failed.", error);
             applyUpdateState({
@@ -926,7 +984,7 @@
           }
         });
 
-        const shouldCheckForUpdates = !["checking", "update-available", "downloading", "downloaded"].includes(
+        const shouldCheckForUpdates = !["checking", "downloading", "downloaded", "installing"].includes(
           currentUpdateState.state
         );
 
